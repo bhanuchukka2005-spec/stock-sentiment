@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException
 from model import analyze_sentiment, analyze_batch
 from news import fetch_headlines, get_company_name
+from database import save_search, get_search_history, get_ticker_stats
 
 app = FastAPI(title="Stock Sentiment Engine", version="1.0.0")
 
@@ -14,10 +15,8 @@ def health_check():
 
 @app.get("/analyze/headline")
 def analyze_single_headline(text: str):
-    """Analyze sentiment of a single headline."""
     if not text or len(text.strip()) == 0:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
-    
     result = analyze_sentiment(text)
     return {
         "input": text,
@@ -30,57 +29,38 @@ def analyze_single_headline(text: str):
 @app.get("/analyze/{ticker}")
 def analyze_ticker(ticker: str, max_headlines: int = 10):
     """
-    Full analysis pipeline for a stock ticker.
-    
-    1. Fetch real headlines from NewsAPI
-    2. Run FinBERT on each headline
-    3. Aggregate into overall market signal
-    
-    max_headlines is a query parameter with a default value of 10.
-    User can override: /analyze/TSLA?max_headlines=20
+    Full pipeline: fetch news → run FinBERT → aggregate → save to DB → return.
     """
     ticker = ticker.upper()
-    
-    # Step 1: get company name for better search results
     company_name = get_company_name(ticker)
-    
-    # Step 2: fetch real headlines
+
     try:
         headlines = fetch_headlines(ticker, company_name, max_results=max_headlines)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Failed to fetch news: {str(e)}")
-    
+
     if not headlines:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No headlines found for {ticker}. Try a different ticker."
-        )
-    
-    # Step 3: run FinBERT on all headlines at once (batch = faster)
+        raise HTTPException(status_code=404, detail=f"No headlines found for {ticker}.")
+
     texts = [h["full_text"] for h in headlines]
     sentiments = analyze_batch(texts)
-    
-    # Step 4: aggregate results
+
     counts = {"positive": 0, "negative": 0, "neutral": 0}
     total_confidence = 0
-    
     for s in sentiments:
         counts[s["label"]] += 1
         total_confidence += s["confidence"]
-    
-    # Overall signal = label with most headlines
+
     overall_signal = max(counts, key=counts.get)
     avg_confidence = round(total_confidence / len(sentiments), 4)
-    
-    # Step 5: build the response
-    return {
+
+    result = {
         "ticker": ticker,
         "company": company_name or ticker,
         "overall_signal": overall_signal,
         "avg_confidence": avg_confidence,
         "headline_count": len(headlines),
         "breakdown": counts,
-        # Combine headline data with its sentiment result
         "headlines": [
             {
                 "title": h["title"],
@@ -94,3 +74,39 @@ def analyze_ticker(ticker: str, max_headlines: int = 10):
             for h, s in zip(headlines, sentiments)
         ],
     }
+
+    # NEW: save this result to the database
+    # We do this after building the result so saving can't break the response
+    try:
+        save_search(ticker, company_name or ticker, result)
+    except Exception as e:
+        # If saving fails, we still return the result — don't break the user's request
+        print(f"Warning: could not save to database: {e}")
+
+    return result
+
+
+# ── NEW: History endpoints ────────────────────────────────────────────────────
+
+@app.get("/history")
+def get_history(ticker: str = None, limit: int = 20):
+    """
+    Get past searches.
+    
+    /history              → last 20 searches across all tickers
+    /history?ticker=TSLA  → last 20 TSLA searches
+    /history?limit=5      → last 5 searches
+    """
+    return get_search_history(ticker=ticker, limit=limit)
+
+
+@app.get("/stats/{ticker}")
+def ticker_stats(ticker: str):
+    """
+    Aggregated stats for a ticker across all its searches.
+    Shows signal trend over time.
+    """
+    stats = get_ticker_stats(ticker)
+    if stats["total_searches"] == 0:
+        raise HTTPException(status_code=404, detail=f"No history found for {ticker}")
+    return stats
