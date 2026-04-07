@@ -310,6 +310,38 @@
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #00ff9c22; border-radius: 4px; }
+
+    /* ── Quick pick buttons ── */
+    .quick-btn {
+      background: #0d1117;
+      border: 1px solid #ffffff0f;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.2s;
+      min-width: 72px;
+    }
+    .quick-btn:hover {
+      border-color: #00ff9c33;
+      background: #00ff9c08;
+      transform: translateY(-2px);
+    }
+    .quick-ticker {
+      color: #00ff9c;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.05em;
+    }
+    .quick-label {
+      color: #ffffff33;
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+    }
   </style>
 </head>
 <body>
@@ -332,6 +364,14 @@
     />
     <button id="analyzeBtn" onclick="analyze()">ANALYZE</button>
   </div>
+
+  <!-- Quick pick buttons -->
+  <div id="quickPicks" style="
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 32px;
+  "></div>
 
   <!-- Error -->
   <div class="error-msg" id="errorMsg"></div>
@@ -412,67 +452,90 @@
 <script>
   const API = "";
 
+  // ── Popular tickers ────────────────────────────────────────────────────────
+  // These render as clickable buttons so users know what to search
+  const POPULAR = [
+    { ticker: "TSLA",     label: "Tesla" },
+    { ticker: "AAPL",     label: "Apple" },
+    { ticker: "GOOGL",    label: "Google" },
+    { ticker: "MSFT",     label: "Microsoft" },
+    { ticker: "NVDA",     label: "Nvidia" },
+    { ticker: "AMZN",     label: "Amazon" },
+    { ticker: "INFY",     label: "Infosys" },
+    { ticker: "TCS",      label: "TCS" },
+    { ticker: "RELIANCE", label: "Reliance" },
+    { ticker: "HDFC",     label: "HDFC" },
+  ];
+
+  // Render the quick-pick buttons on page load
+  function renderQuickPicks() {
+    const container = document.getElementById("quickPicks");
+    POPULAR.forEach(({ ticker, label }) => {
+      const btn = document.createElement("button");
+      btn.className = "quick-btn";
+      btn.innerHTML = `<span class="quick-ticker">${ticker}</span><span class="quick-label">${label}</span>`;
+      // Clicking a quick button sets the input and immediately runs analyze
+      btn.onclick = () => {
+        document.getElementById("tickerInput").value = ticker;
+        analyze();
+      };
+      container.appendChild(btn);
+    });
+  }
+
   // ── Analyze ────────────────────────────────────────────────────────────────
 
-  // Also trigger on Enter key in the input
   document.getElementById("tickerInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") analyze();
   });
 
   async function analyze() {
-    const ticker = document.getElementById("tickerInput").value.trim().toUpperCase();
+    const input = document.getElementById("tickerInput");
+    const ticker = input.value.trim().toUpperCase();
 
     if (!ticker) {
       showError("Please enter a ticker symbol");
       return;
     }
 
-    // Show loading, hide previous results and errors
     setLoading(true);
     hideError();
     document.getElementById("resultCard").classList.remove("visible");
 
+    // FIX 1: clear the input immediately after reading the value
+    input.value = "";
+
     try {
-      // fetch() sends a GET request to our backend
-      // We wait for the response with "await" — pauses here until it comes back
       const response = await fetch(`${API}/analyze/${ticker}`);
 
-      // If backend returned an error (404, 503, etc.), handle it
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || "Analysis failed");
       }
 
-      // Parse the JSON response body into a JavaScript object
       const data = await response.json();
-
-      // Render the result into the page
       renderResult(data);
-
-      // Refresh history to show this new search
       loadHistory();
 
     } catch (err) {
       showError(err.message);
     } finally {
-      // Always hide loading whether it succeeded or failed
       setLoading(false);
+      // Return focus to input so user can type next ticker immediately
+      input.focus();
     }
   }
 
   // ── Render result ──────────────────────────────────────────────────────────
 
   function renderResult(data) {
-    // Fill in the ticker and company name
     document.getElementById("resTicker").textContent = data.ticker;
     document.getElementById("resCompany").textContent = data.company;
 
-    // Signal badge — set text, class, and color
     const badge = document.getElementById("resBadge");
     badge.textContent = `● ${data.overall_signal.toUpperCase()}`;
     badge.className = `signal-badge ${data.overall_signal}`;
 
-    // Stats
     document.getElementById("resCount").textContent = data.headline_count;
     document.getElementById("resConfidence").textContent =
       `${(data.avg_confidence * 100).toFixed(0)}%`;
@@ -480,8 +543,6 @@
     document.getElementById("resNegative").textContent = data.breakdown.negative;
     document.getElementById("resNeutral").textContent  = data.breakdown.neutral;
 
-    // Breakdown bars
-    // Bar width = (count / total) * 100%
     const total = data.headline_count;
     document.getElementById("barPositive").style.width =
       `${(data.breakdown.positive / total) * 100}%`;
@@ -493,12 +554,10 @@
     document.getElementById("countNegative").textContent = data.breakdown.negative;
     document.getElementById("countNeutral").textContent  = data.breakdown.neutral;
 
-    // Headlines list
     const list = document.getElementById("headlinesList");
-    list.innerHTML = ""; // clear previous results
+    list.innerHTML = "";
 
     data.headlines.forEach((h) => {
-      // For each headline, create a div with the dot, title, source, confidence
       const item = document.createElement("div");
       item.className = "headline-item";
       item.innerHTML = `
@@ -519,10 +578,7 @@
       list.appendChild(item);
     });
 
-    // Show the card
     document.getElementById("resultCard").classList.add("visible");
-
-    // Smooth scroll to result
     document.getElementById("resultCard").scrollIntoView({ behavior: "smooth" });
   }
 
@@ -534,7 +590,6 @@
       const data = await response.json();
       renderHistory(data);
     } catch (err) {
-      // History failing shouldn't break the page — just skip it
       console.error("Could not load history:", err);
     }
   }
@@ -551,13 +606,10 @@
     records.forEach((r) => {
       const item = document.createElement("div");
       item.className = "history-item";
-
-      // Clicking a history item re-runs that search
       item.onclick = () => {
         document.getElementById("tickerInput").value = r.ticker;
         analyze();
       };
-
       item.innerHTML = `
         <div>
           <div class="history-ticker">${r.ticker}</div>
@@ -597,7 +649,8 @@
     });
   }
 
-  // Load history when page first opens
+  // Run on page load
+  renderQuickPicks();
   loadHistory();
 </script>
 </body>
