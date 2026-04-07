@@ -6,652 +6,596 @@
   <title>Stock Sentiment Engine</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    /* ── Reset + Base ── */
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #060810; color: #e2e8f0; font-family: 'Courier New', monospace; min-height: 100vh; }
+    .container { max-width: 1060px; margin: 0 auto; padding: 32px 24px; }
 
-    body {
-      background: #060810;
-      color: #e2e8f0;
-      font-family: 'Courier New', monospace;
-      min-height: 100vh;
-    }
+    /* Header */
+    .header { text-align: center; margin-bottom: 40px; }
+    .header h1 { font-size: clamp(1.4rem,4vw,2.2rem); color: #00ff9c; text-shadow: 0 0 24px #00ff9c55; letter-spacing: 0.04em; margin-bottom: 8px; }
+    .header p { color: #ffffff44; font-size: 12px; letter-spacing: 0.12em; }
 
-    /* ── Layout ── */
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
+    /* Tabs */
+    .tabs { display:flex; gap:4px; margin-bottom:24px; background:#0d1117; border:1px solid #ffffff0a; border-radius:10px; padding:4px; }
+    .tab { flex:1; padding:10px; text-align:center; border-radius:7px; font-size:12px; cursor:pointer; letter-spacing:0.1em; color:#ffffff44; border:none; background:transparent; font-family:'Courier New',monospace; transition:all 0.2s; }
+    .tab.active { background:#00ff9c18; color:#00ff9c; border:1px solid #00ff9c33; }
 
-    /* ── Header ── */
-    .header {
-      text-align: center;
-      margin-bottom: 40px;
-    }
-    .header h1 {
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
-      color: #00ff9c;
-      text-shadow: 0 0 24px #00ff9c55;
-      letter-spacing: 0.04em;
-      margin-bottom: 8px;
-    }
-    .header p {
-      color: #ffffff44;
-      font-size: 13px;
-      letter-spacing: 0.1em;
-    }
+    /* Search */
+    .search-box { display:flex; gap:12px; margin-bottom:16px; background:#0d1117; border:1px solid #00ff9c22; border-radius:12px; padding:14px 18px; }
+    .search-box input { flex:1; background:transparent; border:none; outline:none; color:#00ff9c; font-size:17px; font-family:'Courier New',monospace; caret-color:#00ff9c; letter-spacing:0.1em; }
+    .search-box input::placeholder { color:#ffffff22; }
+    .search-box button { background:#00ff9c; color:#000; border:none; padding:10px 26px; border-radius:8px; font-weight:700; font-size:13px; font-family:'Courier New',monospace; cursor:pointer; letter-spacing:0.08em; transition:all 0.2s; white-space:nowrap; }
+    .search-box button:hover { box-shadow:0 0 20px #00ff9c55; }
+    .search-box button:disabled { opacity:0.4; cursor:not-allowed; }
 
-    /* ── Search box ── */
-    .search-box {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 40px;
-      background: #0d1117;
-      border: 1px solid #00ff9c22;
-      border-radius: 12px;
-      padding: 16px 20px;
-    }
-    .search-box input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: #00ff9c;
-      font-size: 18px;
-      font-family: 'Courier New', monospace;
-      caret-color: #00ff9c;
-      letter-spacing: 0.1em;
-    }
-    .search-box input::placeholder { color: #ffffff22; }
-    .search-box button {
-      background: #00ff9c;
-      color: #000;
-      border: none;
-      padding: 10px 28px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 14px;
-      font-family: 'Courier New', monospace;
-      cursor: pointer;
-      letter-spacing: 0.08em;
-      transition: all 0.2s;
-    }
-    .search-box button:hover { box-shadow: 0 0 20px #00ff9c55; }
-    .search-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* Compare */
+    .compare-box { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+    .compare-input { flex:1; min-width:140px; background:#0d1117; border:1px solid #ffffff14; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+    .compare-input input { flex:1; background:transparent; border:none; outline:none; color:#fff; font-size:15px; font-family:'Courier New',monospace; caret-color:#00ff9c; }
+    .compare-input input::placeholder { color:#ffffff22; }
+    .compare-label { font-size:10px; color:#ffffff33; letter-spacing:0.1em; white-space:nowrap; }
+    .compare-btn { background:#00cfff18; color:#00cfff; border:1px solid #00cfff44; padding:12px 24px; border-radius:10px; font-weight:700; font-size:13px; font-family:'Courier New',monospace; cursor:pointer; letter-spacing:0.06em; transition:all 0.2s; white-space:nowrap; }
+    .compare-btn:hover { background:#00cfff28; box-shadow:0 0 16px #00cfff22; }
+    .compare-btn:disabled { opacity:0.4; cursor:not-allowed; }
 
-    /* ── Signal card ── */
-    .signal-card {
-      background: #0d1117;
-      border-radius: 12px;
-      padding: 28px;
-      margin-bottom: 24px;
-      border: 1px solid #ffffff0f;
-      display: none;
-    }
-    .signal-card.visible { display: block; }
+    /* Quick picks */
+    #quickPicks { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:32px; }
+    .quick-btn { background:#0d1117; border:1px solid #ffffff0f; border-radius:8px; padding:7px 14px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; transition:all 0.2s; min-width:68px; }
+    .quick-btn:hover { border-color:#00ff9c33; background:#00ff9c08; transform:translateY(-2px); }
+    .quick-ticker { color:#00ff9c; font-size:11px; font-weight:700; letter-spacing:0.05em; }
+    .quick-label  { color:#ffffff33; font-size:10px; }
 
-    .signal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .ticker-name {
-      font-size: 2rem;
-      font-weight: 900;
-      color: #fff;
-      letter-spacing: 0.05em;
-    }
-    .company-name {
-      color: #ffffff44;
-      font-size: 13px;
-      margin-top: 4px;
-    }
-    .signal-badge {
-      font-size: 13px;
-      font-weight: 800;
-      padding: 8px 20px;
-      border-radius: 8px;
-      letter-spacing: 0.12em;
-    }
-    .signal-badge.positive { background: #00ff9c22; color: #00ff9c; border: 1px solid #00ff9c44; }
-    .signal-badge.negative { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b44; }
-    .signal-badge.neutral  { background: #ffd70022; color: #ffd700; border: 1px solid #ffd70044; }
+    /* Signal card */
+    .signal-card { background:#0d1117; border-radius:12px; padding:26px; margin-bottom:24px; border:1px solid #ffffff0f; display:none; }
+    .signal-card.visible { display:block; }
+    .signal-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; flex-wrap:wrap; gap:12px; }
+    .ticker-name { font-size:1.9rem; font-weight:900; color:#fff; letter-spacing:0.05em; }
+    .company-name { color:#ffffff44; font-size:12px; margin-top:4px; }
+    .signal-badge { font-size:12px; font-weight:800; padding:8px 18px; border-radius:8px; letter-spacing:0.12em; }
+    .signal-badge.positive { background:#00ff9c22; color:#00ff9c; border:1px solid #00ff9c44; }
+    .signal-badge.negative { background:#ff6b6b22; color:#ff6b6b; border:1px solid #ff6b6b44; }
+    .signal-badge.neutral  { background:#ffd70022; color:#ffd700; border:1px solid #ffd70044; }
 
-    /* ── Stats row ── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 12px;
-      margin-bottom: 28px;
-    }
-    .stat-box {
-      background: #0a0e1a;
-      border: 1px solid #ffffff0a;
-      border-radius: 8px;
-      padding: 14px 16px;
-      text-align: center;
-    }
-    .stat-label {
-      color: #ffffff33;
-      font-size: 10px;
-      letter-spacing: 0.15em;
-      margin-bottom: 6px;
-    }
-    .stat-value {
-      color: #fff;
-      font-size: 1.4rem;
-      font-weight: 700;
-    }
+    /* Stats */
+    .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:24px; }
+    .stat-box { background:#0a0e1a; border:1px solid #ffffff0a; border-radius:8px; padding:13px 15px; text-align:center; }
+    .stat-label { color:#ffffff33; font-size:9px; letter-spacing:0.15em; margin-bottom:6px; }
+    .stat-value { color:#fff; font-size:1.3rem; font-weight:700; }
 
-    /* ── Breakdown bars ── */
-    .breakdown {
-      margin-bottom: 28px;
-    }
-    .breakdown-title {
-      color: #ffffff44;
-      font-size: 10px;
-      letter-spacing: 0.15em;
-      margin-bottom: 12px;
-    }
-    .bar-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-    .bar-label {
-      width: 64px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-    .bar-label.positive { color: #00ff9c; }
-    .bar-label.negative { color: #ff6b6b; }
-    .bar-label.neutral  { color: #ffd700; }
-    .bar-track {
-      flex: 1;
-      height: 6px;
-      background: #ffffff0a;
-      border-radius: 3px;
-      overflow: hidden;
-    }
-    .bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.6s cubic-bezier(.22,1,.36,1);
-    }
-    .bar-fill.positive { background: #00ff9c; box-shadow: 0 0 8px #00ff9c88; }
-    .bar-fill.negative { background: #ff6b6b; box-shadow: 0 0 8px #ff6b6b88; }
-    .bar-fill.neutral  { background: #ffd700; box-shadow: 0 0 8px #ffd70088; }
-    .bar-count { color: #ffffff55; font-size: 12px; width: 16px; text-align: right; }
+    /* Charts */
+    .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    @media(max-width:640px){ .chart-row{ grid-template-columns:1fr; } }
+    .chart-box { background:#0a0e1a; border:1px solid #ffffff0a; border-radius:10px; padding:16px; }
+    .chart-title { color:#ffffff33; font-size:9px; letter-spacing:0.15em; margin-bottom:12px; }
 
-    /* ── Headlines list ── */
-    .headlines-title {
-      color: #ffffff44;
-      font-size: 10px;
-      letter-spacing: 0.15em;
-      margin-bottom: 12px;
-    }
-    .headline-item {
-      background: #0a0e1a;
-      border: 1px solid #ffffff08;
-      border-radius: 8px;
-      padding: 14px 16px;
-      margin-bottom: 8px;
-      display: flex;
-      gap: 14px;
-      align-items: flex-start;
-      transition: border-color 0.2s;
-    }
-    .headline-item:hover { border-color: #ffffff18; }
-    .headline-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-top: 5px;
-      flex-shrink: 0;
-    }
-    .headline-dot.positive { background: #00ff9c; box-shadow: 0 0 6px #00ff9c; }
-    .headline-dot.negative { background: #ff6b6b; box-shadow: 0 0 6px #ff6b6b; }
-    .headline-dot.neutral  { background: #ffd700; box-shadow: 0 0 6px #ffd700; }
-    .headline-text { flex: 1; }
-    .headline-title-text {
-      font-size: 13px;
-      color: #ffffffcc;
-      line-height: 1.5;
-      margin-bottom: 4px;
-    }
-    .headline-title-text a {
-      color: inherit;
-      text-decoration: none;
-    }
-    .headline-title-text a:hover { color: #00ff9c; }
-    .headline-meta {
-      font-size: 10px;
-      color: #ffffff33;
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .confidence-text {
-      font-size: 11px;
-      font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-    .confidence-text.positive { color: #00ff9c; }
-    .confidence-text.negative { color: #ff6b6b; }
-    .confidence-text.neutral  { color: #ffd700; }
+    /* Breakdown bars */
+    .breakdown { margin-bottom:24px; }
+    .breakdown-title { color:#ffffff33; font-size:9px; letter-spacing:0.15em; margin-bottom:10px; }
+    .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+    .bar-label { width:60px; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; }
+    .bar-label.positive { color:#00ff9c; }
+    .bar-label.negative { color:#ff6b6b; }
+    .bar-label.neutral  { color:#ffd700; }
+    .bar-track { flex:1; height:5px; background:#ffffff0a; border-radius:3px; overflow:hidden; }
+    .bar-fill { height:100%; border-radius:3px; transition:width 0.7s cubic-bezier(.22,1,.36,1); }
+    .bar-fill.positive { background:#00ff9c; box-shadow:0 0 6px #00ff9c88; }
+    .bar-fill.negative { background:#ff6b6b; box-shadow:0 0 6px #ff6b6b88; }
+    .bar-fill.neutral  { background:#ffd700; box-shadow:0 0 6px #ffd70088; }
+    .bar-count { color:#ffffff44; font-size:11px; width:14px; text-align:right; }
 
-    /* ── History section ── */
-    .history-section {
-      margin-top: 40px;
-    }
-    .section-title {
-      color: #ffffff44;
-      font-size: 10px;
-      letter-spacing: 0.2em;
-      margin-bottom: 16px;
-    }
-    .history-item {
-      background: #0d1117;
-      border: 1px solid #ffffff08;
-      border-radius: 8px;
-      padding: 14px 18px;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .history-item:hover {
-      border-color: #00ff9c22;
-      background: #0d1117ee;
-    }
-    .history-ticker { font-weight: 700; font-size: 14px; color: #fff; }
-    .history-time { color: #ffffff33; font-size: 11px; }
-    .history-signal {
-      font-size: 11px;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 4px;
-    }
-    .history-signal.positive { background: #00ff9c18; color: #00ff9c; }
-    .history-signal.negative { background: #ff6b6b18; color: #ff6b6b; }
-    .history-signal.neutral  { background: #ffd70018; color: #ffd700; }
+    /* Headlines */
+    .headlines-title { color:#ffffff33; font-size:9px; letter-spacing:0.15em; margin-bottom:10px; }
+    .headline-item { background:#0a0e1a; border:1px solid #ffffff07; border-radius:8px; padding:12px 14px; margin-bottom:7px; display:flex; gap:12px; align-items:flex-start; transition:border-color 0.2s; }
+    .headline-item:hover { border-color:#ffffff14; }
+    .headline-dot { width:7px; height:7px; border-radius:50%; margin-top:5px; flex-shrink:0; }
+    .headline-dot.positive { background:#00ff9c; box-shadow:0 0 5px #00ff9c; }
+    .headline-dot.negative { background:#ff6b6b; box-shadow:0 0 5px #ff6b6b; }
+    .headline-dot.neutral  { background:#ffd700; box-shadow:0 0 5px #ffd700; }
+    .headline-text { flex:1; }
+    .headline-title-text { font-size:12px; color:#ffffffcc; line-height:1.5; margin-bottom:3px; }
+    .headline-title-text a { color:inherit; text-decoration:none; }
+    .headline-title-text a:hover { color:#00ff9c; }
+    .headline-meta { font-size:10px; color:#ffffff33; display:flex; gap:10px; flex-wrap:wrap; }
+    .headline-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
+    .conf-pct { font-size:11px; font-weight:700; }
+    .conf-pct.positive { color:#00ff9c; }
+    .conf-pct.negative { color:#ff6b6b; }
+    .conf-pct.neutral  { color:#ffd700; }
+    .conf-bar-track { width:48px; height:3px; background:#ffffff0a; border-radius:2px; }
+    .conf-bar-fill { height:100%; border-radius:2px; }
+    .conf-bar-fill.positive { background:#00ff9c; }
+    .conf-bar-fill.negative { background:#ff6b6b; }
+    .conf-bar-fill.neutral  { background:#ffd700; }
 
-    /* ── Loading + error states ── */
-    .loading {
-      text-align: center;
-      padding: 40px;
-      color: #00ff9c66;
-      font-size: 13px;
-      letter-spacing: 0.15em;
-      display: none;
-    }
-    .loading.visible { display: block; }
-    .error-msg {
-      background: #ff6b6b12;
-      border: 1px solid #ff6b6b33;
-      color: #ff6b6b;
-      padding: 14px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-bottom: 20px;
-      display: none;
-    }
-    .error-msg.visible { display: block; }
+    /* Compare */
+    .compare-result { display:none; margin-bottom:24px; }
+    .compare-result.visible { display:block; }
+    .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+    @media(max-width:600px){ .compare-grid{ grid-template-columns:1fr; } }
+    .compare-card { background:#0d1117; border:1px solid #ffffff0f; border-radius:12px; padding:20px; }
+    .compare-ticker { font-size:1.4rem; font-weight:900; color:#fff; margin-bottom:4px; }
+    .compare-signal { font-size:11px; font-weight:800; padding:5px 12px; border-radius:6px; display:inline-block; margin-bottom:14px; letter-spacing:0.1em; }
+    .compare-signal.positive { background:#00ff9c22; color:#00ff9c; border:1px solid #00ff9c44; }
+    .compare-signal.negative { background:#ff6b6b22; color:#ff6b6b; border:1px solid #ff6b6b44; }
+    .compare-signal.neutral  { background:#ffd70022; color:#ffd700; border:1px solid #ffd70044; }
 
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #00ff9c22; border-radius: 4px; }
+    /* History */
+    .history-section { margin-top:40px; }
+    .section-title { color:#ffffff33; font-size:9px; letter-spacing:0.2em; margin-bottom:14px; }
+    .history-item { background:#0d1117; border:1px solid #ffffff07; border-radius:8px; padding:12px 16px; margin-bottom:7px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.2s; }
+    .history-item:hover { border-color:#00ff9c22; }
+    .history-ticker { font-weight:700; font-size:13px; color:#fff; }
+    .history-time { color:#ffffff33; font-size:10px; }
+    .history-signal { font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px; }
+    .history-signal.positive { background:#00ff9c18; color:#00ff9c; }
+    .history-signal.negative { background:#ff6b6b18; color:#ff6b6b; }
+    .history-signal.neutral  { background:#ffd70018; color:#ffd700; }
 
-    /* ── Quick pick buttons ── */
-    .quick-btn {
-      background: #0d1117;
-      border: 1px solid #ffffff0f;
-      border-radius: 8px;
-      padding: 8px 16px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      transition: all 0.2s;
-      min-width: 72px;
-    }
-    .quick-btn:hover {
-      border-color: #00ff9c33;
-      background: #00ff9c08;
-      transform: translateY(-2px);
-    }
-    .quick-ticker {
-      color: #00ff9c;
-      font-size: 12px;
-      font-weight: 700;
-      font-family: 'Courier New', monospace;
-      letter-spacing: 0.05em;
-    }
-    .quick-label {
-      color: #ffffff33;
-      font-size: 10px;
-      font-family: 'Courier New', monospace;
-    }
+    /* Skeleton */
+    @keyframes shimmer { 0%{background-position:-600px 0} 100%{background-position:600px 0} }
+    .skeleton { background:linear-gradient(90deg,#0d1117 25%,#1a2030 50%,#0d1117 75%); background-size:600px 100%; animation:shimmer 1.4s infinite linear; border-radius:6px; }
+    .skeleton-card { background:#0d1117; border:1px solid #ffffff0a; border-radius:12px; padding:26px; margin-bottom:24px; display:none; }
+    .skeleton-card.visible { display:block; }
+
+    /* Error */
+    .error-msg { background:#ff6b6b12; border:1px solid #ff6b6b33; color:#ff6b6b; padding:12px 16px; border-radius:8px; font-size:12px; margin-bottom:18px; display:none; }
+    .error-msg.visible { display:block; }
+
+    /* Tab panels */
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    ::-webkit-scrollbar { width:4px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:#00ff9c22; border-radius:4px; }
   </style>
 </head>
 <body>
 <div class="container">
 
-  <!-- Header -->
   <div class="header">
     <h1>◉ STOCK SENTIMENT ENGINE</h1>
     <p>// FINBERT · REAL-TIME NEWS · NLP ANALYSIS</p>
   </div>
 
-  <!-- Search -->
-  <div class="search-box">
-    <input
-      type="text"
-      id="tickerInput"
-      placeholder="Enter ticker — TSLA, AAPL, INFY..."
-      autocomplete="off"
-      autofocus
-    />
-    <button id="analyzeBtn" onclick="analyze()">ANALYZE</button>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('analyze')">ANALYZE</button>
+    <button class="tab" onclick="switchTab('compare')">COMPARE</button>
+    <button class="tab" onclick="switchTab('history')">HISTORY</button>
   </div>
 
-  <!-- Quick pick buttons -->
-  <div id="quickPicks" style="
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 32px;
-  "></div>
+  <!-- ANALYZE TAB -->
+  <div class="tab-panel active" id="tab-analyze">
+    <div class="search-box">
+      <input type="text" id="tickerInput" placeholder="Enter ticker — TSLA, AAPL, ZOMATO..." autocomplete="off" autofocus />
+      <button id="analyzeBtn" onclick="analyze()">ANALYZE</button>
+    </div>
+    <div id="quickPicks"></div>
+    <div class="error-msg" id="errorMsg"></div>
 
-  <!-- Error -->
-  <div class="error-msg" id="errorMsg"></div>
-
-  <!-- Loading -->
-  <div class="loading" id="loading">⟳ FETCHING HEADLINES AND RUNNING FINBERT...</div>
-
-  <!-- Result card -->
-  <div class="signal-card" id="resultCard">
-
-    <!-- Signal header -->
-    <div class="signal-header">
-      <div>
-        <div class="ticker-name" id="resTicker"></div>
-        <div class="company-name" id="resCompany"></div>
+    <!-- Skeleton loader -->
+    <div class="skeleton-card" id="skeletonCard">
+      <div class="skeleton" style="height:32px;width:40%;margin-bottom:20px;"></div>
+      <div class="skeleton" style="height:28px;width:120px;margin-bottom:20px;border-radius:8px;"></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+        <div class="skeleton" style="height:60px;border-radius:8px;"></div>
+        <div class="skeleton" style="height:60px;border-radius:8px;"></div>
+        <div class="skeleton" style="height:60px;border-radius:8px;"></div>
+        <div class="skeleton" style="height:60px;border-radius:8px;"></div>
       </div>
-      <div class="signal-badge" id="resBadge"></div>
+      <div class="skeleton" style="height:160px;border-radius:10px;margin-bottom:16px;"></div>
+      <div class="skeleton" style="height:14px;width:90%;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:14px;width:80%;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:14px;width:85%;"></div>
     </div>
 
-    <!-- Stats -->
-    <div class="stats-row">
-      <div class="stat-box">
-        <div class="stat-label">HEADLINES</div>
-        <div class="stat-value" id="resCount"></div>
+    <!-- Result -->
+    <div class="signal-card" id="resultCard">
+      <div class="signal-header">
+        <div>
+          <div class="ticker-name" id="resTicker"></div>
+          <div class="company-name" id="resCompany"></div>
+        </div>
+        <div class="signal-badge" id="resBadge"></div>
       </div>
-      <div class="stat-box">
-        <div class="stat-label">AVG CONFIDENCE</div>
-        <div class="stat-value" id="resConfidence"></div>
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-label">HEADLINES</div><div class="stat-value" id="resCount"></div></div>
+        <div class="stat-box"><div class="stat-label">CONFIDENCE</div><div class="stat-value" id="resConfidence"></div></div>
+        <div class="stat-box"><div class="stat-label">POSITIVE</div><div class="stat-value" style="color:#00ff9c" id="resPositive"></div></div>
+        <div class="stat-box"><div class="stat-label">NEGATIVE</div><div class="stat-value" style="color:#ff6b6b" id="resNegative"></div></div>
+        <div class="stat-box"><div class="stat-label">NEUTRAL</div><div class="stat-value" style="color:#ffd700" id="resNeutral"></div></div>
       </div>
-      <div class="stat-box">
-        <div class="stat-label">POSITIVE</div>
-        <div class="stat-value" style="color:#00ff9c" id="resPositive"></div>
+      <div class="chart-row">
+        <div class="chart-box">
+          <div class="chart-title">// SENTIMENT DISTRIBUTION</div>
+          <canvas id="donutChart" height="160"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">// CONFIDENCE PER HEADLINE</div>
+          <canvas id="barChart" height="160"></canvas>
+        </div>
       </div>
-      <div class="stat-box">
-        <div class="stat-label">NEGATIVE</div>
-        <div class="stat-value" style="color:#ff6b6b" id="resNegative"></div>
+      <div class="breakdown">
+        <div class="breakdown-title">// BREAKDOWN</div>
+        <div class="bar-row">
+          <span class="bar-label positive">Positive</span>
+          <div class="bar-track"><div class="bar-fill positive" id="barPositive" style="width:0%"></div></div>
+          <span class="bar-count" id="countPositive">0</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label negative">Negative</span>
+          <div class="bar-track"><div class="bar-fill negative" id="barNegative" style="width:0%"></div></div>
+          <span class="bar-count" id="countNegative">0</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label neutral">Neutral</span>
+          <div class="bar-track"><div class="bar-fill neutral" id="barNeutral" style="width:0%"></div></div>
+          <span class="bar-count" id="countNeutral">0</span>
+        </div>
       </div>
-      <div class="stat-box">
-        <div class="stat-label">NEUTRAL</div>
-        <div class="stat-value" style="color:#ffd700" id="resNeutral"></div>
-      </div>
+      <div class="headlines-title">// ANALYZED HEADLINES</div>
+      <div id="headlinesList"></div>
     </div>
-
-    <!-- Breakdown bars -->
-    <div class="breakdown">
-      <div class="breakdown-title">// SENTIMENT BREAKDOWN</div>
-      <div class="bar-row">
-        <span class="bar-label positive">Positive</span>
-        <div class="bar-track"><div class="bar-fill positive" id="barPositive" style="width:0%"></div></div>
-        <span class="bar-count" id="countPositive">0</span>
-      </div>
-      <div class="bar-row">
-        <span class="bar-label negative">Negative</span>
-        <div class="bar-track"><div class="bar-fill negative" id="barNegative" style="width:0%"></div></div>
-        <span class="bar-count" id="countNegative">0</span>
-      </div>
-      <div class="bar-row">
-        <span class="bar-label neutral">Neutral</span>
-        <div class="bar-track"><div class="bar-fill neutral" id="barNeutral" style="width:0%"></div></div>
-        <span class="bar-count" id="countNeutral">0</span>
-      </div>
-    </div>
-
-    <!-- Headlines -->
-    <div class="headlines-title">// ANALYZED HEADLINES</div>
-    <div id="headlinesList"></div>
-
   </div>
 
-  <!-- History -->
-  <div class="history-section">
-    <div class="section-title">// RECENT SEARCHES</div>
-    <div id="historyList"></div>
+  <!-- COMPARE TAB -->
+  <div class="tab-panel" id="tab-compare">
+    <div class="compare-box">
+      <div class="compare-input">
+        <span class="compare-label">TICKER A</span>
+        <input type="text" id="compareA" placeholder="TSLA" autocomplete="off" />
+      </div>
+      <div style="display:flex;align-items:center;color:#ffffff33;font-size:18px;padding:0 4px;">vs</div>
+      <div class="compare-input">
+        <span class="compare-label">TICKER B</span>
+        <input type="text" id="compareB" placeholder="AAPL" autocomplete="off" />
+      </div>
+      <button class="compare-btn" id="compareBtn" onclick="compare()">COMPARE</button>
+    </div>
+    <div class="error-msg" id="compareError"></div>
+    <div class="compare-result" id="compareResult">
+      <div class="compare-grid">
+        <div class="compare-card" id="compareCardA"></div>
+        <div class="compare-card" id="compareCardB"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">// SIDE-BY-SIDE SENTIMENT COMPARISON</div>
+        <canvas id="compareChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tab-panel" id="tab-history">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div class="section-title" style="margin:0">// ALL SEARCHES</div>
+      <select id="historyFilter" onchange="loadFullHistory()"
+        style="background:#0d1117;border:1px solid #ffffff14;color:#ffffff88;padding:6px 12px;border-radius:6px;font-family:monospace;font-size:11px;cursor:pointer;">
+        <option value="">All tickers</option>
+      </select>
+    </div>
+    <div id="fullHistoryList"></div>
+    <div class="chart-box" style="margin-top:24px;">
+      <div class="chart-title">// SENTIMENT TREND — last 10 searches</div>
+      <canvas id="trendChart" height="160"></canvas>
+    </div>
   </div>
 
 </div>
 
 <script>
-  const API = "";
+const API = "";
+let donutChartInst = null, barChartInst = null, compareChartInst = null, trendChartInst = null;
 
-  // ── Popular tickers ────────────────────────────────────────────────────────
-  // These render as clickable buttons so users know what to search
-  const POPULAR = [
-    { ticker: "TSLA",     label: "Tesla" },
-    { ticker: "AAPL",     label: "Apple" },
-    { ticker: "GOOGL",    label: "Google" },
-    { ticker: "MSFT",     label: "Microsoft" },
-    { ticker: "NVDA",     label: "Nvidia" },
-    { ticker: "AMZN",     label: "Amazon" },
-    { ticker: "INFY",     label: "Infosys" },
-    { ticker: "TCS",      label: "TCS" },
-    { ticker: "RELIANCE", label: "Reliance" },
-    { ticker: "HDFC",     label: "HDFC" },
-  ];
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((t,i) => {
+    t.classList.toggle("active", ["analyze","compare","history"][i] === name);
+  });
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.getElementById(`tab-${name}`).classList.add("active");
+  if (name === "history") loadFullHistory();
+}
 
-  // Render the quick-pick buttons on page load
-  function renderQuickPicks() {
-    const container = document.getElementById("quickPicks");
-    POPULAR.forEach(({ ticker, label }) => {
+// ── Quick picks ────────────────────────────────────────────────────────────
+const POPULAR_GROUPS = [
+  { group:"🇺🇸 US Tech", tickers:[
+    {ticker:"TSLA",label:"Tesla"},{ticker:"AAPL",label:"Apple"},
+    {ticker:"GOOGL",label:"Google"},{ticker:"MSFT",label:"Microsoft"},
+    {ticker:"NVDA",label:"Nvidia"},{ticker:"META",label:"Meta"},
+  ]},
+  { group:"🇮🇳 Indian", tickers:[
+    {ticker:"TCS",label:"TCS"},{ticker:"INFY",label:"Infosys"},
+    {ticker:"WIPRO",label:"Wipro"},{ticker:"RELIANCE",label:"Reliance"},
+    {ticker:"ZOMATO",label:"Zomato"},{ticker:"HDFC",label:"HDFC"},
+  ]},
+];
+
+function renderQuickPicks() {
+  const container = document.getElementById("quickPicks");
+  POPULAR_GROUPS.forEach(({ group, tickers }) => {
+    const lbl = document.createElement("div");
+    lbl.style.cssText = "width:100%;color:#ffffff33;font-size:10px;letter-spacing:.15em;margin-top:6px;margin-bottom:4px;";
+    lbl.textContent = group;
+    container.appendChild(lbl);
+    tickers.forEach(({ ticker, label }) => {
       const btn = document.createElement("button");
       btn.className = "quick-btn";
       btn.innerHTML = `<span class="quick-ticker">${ticker}</span><span class="quick-label">${label}</span>`;
-      // Clicking a quick button sets the input and immediately runs analyze
-      btn.onclick = () => {
-        document.getElementById("tickerInput").value = ticker;
-        analyze();
-      };
+      btn.onclick = () => { document.getElementById("tickerInput").value = ticker; analyze(); };
       container.appendChild(btn);
     });
+  });
+  const hint = document.createElement("div");
+  hint.style.cssText = "width:100%;color:#ffffff22;font-size:10px;margin-top:10px;padding:8px 12px;border:1px dashed #ffffff0f;border-radius:6px;";
+  hint.textContent = "💡 Type any ticker — BAJAJ, SAMSUNG, BITCOIN, OPENAI...";
+  container.appendChild(hint);
+}
+
+// ── Enter key ──────────────────────────────────────────────────────────────
+window.addEventListener("load", () => {
+  document.getElementById("tickerInput").addEventListener("keydown", e => { if(e.key==="Enter") analyze(); });
+  document.getElementById("compareA").addEventListener("keydown", e => { if(e.key==="Enter") compare(); });
+  document.getElementById("compareB").addEventListener("keydown", e => { if(e.key==="Enter") compare(); });
+});
+
+// ── Analyze ────────────────────────────────────────────────────────────────
+async function analyze() {
+  const input = document.getElementById("tickerInput");
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) { showError("Please enter a ticker symbol"); return; }
+  input.value = "";
+  setLoading(true);
+  hideError();
+  document.getElementById("resultCard").classList.remove("visible");
+  try {
+    const res = await fetch(`${API}/analyze/${ticker}`);
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Analysis failed"); }
+    const data = await res.json();
+    renderResult(data);
+  } catch(err) {
+    showError(err.message);
+  } finally {
+    setLoading(false);
+    input.focus();
   }
+}
 
-  // ── Analyze ────────────────────────────────────────────────────────────────
+// ── Render result ──────────────────────────────────────────────────────────
+function renderResult(data) {
+  document.getElementById("resTicker").textContent  = data.ticker;
+  document.getElementById("resCompany").textContent = data.company;
+  const badge = document.getElementById("resBadge");
+  badge.textContent = `● ${data.overall_signal.toUpperCase()}`;
+  badge.className   = `signal-badge ${data.overall_signal}`;
+  document.getElementById("resCount").textContent      = data.headline_count;
+  document.getElementById("resConfidence").textContent = `${(data.avg_confidence*100).toFixed(0)}%`;
+  document.getElementById("resPositive").textContent   = data.breakdown.positive;
+  document.getElementById("resNegative").textContent   = data.breakdown.negative;
+  document.getElementById("resNeutral").textContent    = data.breakdown.neutral;
+  const t = data.headline_count;
+  document.getElementById("barPositive").style.width = `${(data.breakdown.positive/t)*100}%`;
+  document.getElementById("barNegative").style.width = `${(data.breakdown.negative/t)*100}%`;
+  document.getElementById("barNeutral").style.width  = `${(data.breakdown.neutral /t)*100}%`;
+  document.getElementById("countPositive").textContent = data.breakdown.positive;
+  document.getElementById("countNegative").textContent = data.breakdown.negative;
+  document.getElementById("countNeutral").textContent  = data.breakdown.neutral;
 
-  document.getElementById("tickerInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") analyze();
+  // Donut chart
+  if (donutChartInst) donutChartInst.destroy();
+  donutChartInst = new Chart(document.getElementById("donutChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Positive","Negative","Neutral"],
+      datasets: [{
+        data: [data.breakdown.positive, data.breakdown.negative, data.breakdown.neutral],
+        backgroundColor: ["#00ff9c33","#ff6b6b33","#ffd70033"],
+        borderColor: ["#00ff9c","#ff6b6b","#ffd700"],
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color:"#ffffff88", font:{ family:"monospace", size:11 } } } },
+      cutout: "65%",
+    }
   });
 
-  async function analyze() {
-    const input = document.getElementById("tickerInput");
-    const ticker = input.value.trim().toUpperCase();
-
-    if (!ticker) {
-      showError("Please enter a ticker symbol");
-      return;
+  // Bar chart — confidence per headline
+  if (barChartInst) barChartInst.destroy();
+  barChartInst = new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: {
+      labels: data.headlines.map((_,i) => `H${i+1}`),
+      datasets: [{
+        label: "Confidence %",
+        data: data.headlines.map(h => +(h.confidence*100).toFixed(1)),
+        backgroundColor: data.headlines.map(h => h.sentiment==="positive"?"#00ff9c88":h.sentiment==="negative"?"#ff6b6b88":"#ffd70088"),
+        borderColor: data.headlines.map(h => h.sentiment==="positive"?"#00ff9c":h.sentiment==="negative"?"#ff6b6b":"#ffd700"),
+        borderWidth: 1, borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { min:0, max:100, ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{color:"#ffffff08"} },
+        x: { ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{display:false} }
+      },
+      plugins: { legend:{ display:false } }
     }
+  });
 
-    setLoading(true);
-    hideError();
-    document.getElementById("resultCard").classList.remove("visible");
+  // Headlines list
+  const list = document.getElementById("headlinesList");
+  list.innerHTML = "";
+  data.headlines.forEach(h => {
+    const item = document.createElement("div");
+    item.className = "headline-item";
+    item.innerHTML = `
+      <div class="headline-dot ${h.sentiment}"></div>
+      <div class="headline-text">
+        <div class="headline-title-text"><a href="${h.url}" target="_blank" rel="noreferrer">${h.title}</a></div>
+        <div class="headline-meta"><span>${h.source}</span><span>${formatDate(h.published_at)}</span></div>
+      </div>
+      <div class="headline-right">
+        <span class="conf-pct ${h.sentiment}">${(h.confidence*100).toFixed(0)}%</span>
+        <div class="conf-bar-track"><div class="conf-bar-fill ${h.sentiment}" style="width:${(h.confidence*100).toFixed(0)}%"></div></div>
+      </div>`;
+    list.appendChild(item);
+  });
 
-    // FIX 1: clear the input immediately after reading the value
-    input.value = "";
+  document.getElementById("resultCard").classList.add("visible");
+  document.getElementById("resultCard").scrollIntoView({ behavior:"smooth" });
+}
 
-    try {
-      const response = await fetch(`${API}/analyze/${ticker}`);
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || "Analysis failed");
-      }
-
-      const data = await response.json();
-      renderResult(data);
-      loadHistory();
-
-    } catch (err) {
-      showError(err.message);
-    } finally {
-      setLoading(false);
-      // Return focus to input so user can type next ticker immediately
-      input.focus();
-    }
+// ── Compare ────────────────────────────────────────────────────────────────
+async function compare() {
+  const a = document.getElementById("compareA").value.trim().toUpperCase();
+  const b = document.getElementById("compareB").value.trim().toUpperCase();
+  if (!a || !b) {
+    const el = document.getElementById("compareError");
+    el.textContent = "⚠ Enter both tickers"; el.classList.add("visible"); return;
   }
+  document.getElementById("compareError").classList.remove("visible");
+  document.getElementById("compareBtn").disabled = true;
+  document.getElementById("compareBtn").textContent = "LOADING...";
+  document.getElementById("compareResult").classList.remove("visible");
+  try {
+    const [dA, dB] = await Promise.all([
+      fetch(`${API}/analyze/${a}`).then(r => r.json()),
+      fetch(`${API}/analyze/${b}`).then(r => r.json()),
+    ]);
+    renderCompareCard("compareCardA", dA);
+    renderCompareCard("compareCardB", dB);
+    renderCompareChart(dA, dB);
+    document.getElementById("compareResult").classList.add("visible");
+  } catch(err) {
+    const el = document.getElementById("compareError");
+    el.textContent = `⚠ ${err.message}`; el.classList.add("visible");
+  } finally {
+    document.getElementById("compareBtn").disabled = false;
+    document.getElementById("compareBtn").textContent = "COMPARE";
+  }
+}
 
-  // ── Render result ──────────────────────────────────────────────────────────
-
-  function renderResult(data) {
-    document.getElementById("resTicker").textContent = data.ticker;
-    document.getElementById("resCompany").textContent = data.company;
-
-    const badge = document.getElementById("resBadge");
-    badge.textContent = `● ${data.overall_signal.toUpperCase()}`;
-    badge.className = `signal-badge ${data.overall_signal}`;
-
-    document.getElementById("resCount").textContent = data.headline_count;
-    document.getElementById("resConfidence").textContent =
-      `${(data.avg_confidence * 100).toFixed(0)}%`;
-    document.getElementById("resPositive").textContent = data.breakdown.positive;
-    document.getElementById("resNegative").textContent = data.breakdown.negative;
-    document.getElementById("resNeutral").textContent  = data.breakdown.neutral;
-
-    const total = data.headline_count;
-    document.getElementById("barPositive").style.width =
-      `${(data.breakdown.positive / total) * 100}%`;
-    document.getElementById("barNegative").style.width =
-      `${(data.breakdown.negative / total) * 100}%`;
-    document.getElementById("barNeutral").style.width  =
-      `${(data.breakdown.neutral  / total) * 100}%`;
-    document.getElementById("countPositive").textContent = data.breakdown.positive;
-    document.getElementById("countNegative").textContent = data.breakdown.negative;
-    document.getElementById("countNeutral").textContent  = data.breakdown.neutral;
-
-    const list = document.getElementById("headlinesList");
-    list.innerHTML = "";
-
-    data.headlines.forEach((h) => {
-      const item = document.createElement("div");
-      item.className = "headline-item";
-      item.innerHTML = `
-        <div class="headline-dot ${h.sentiment}"></div>
-        <div class="headline-text">
-          <div class="headline-title-text">
-            <a href="${h.url}" target="_blank" rel="noreferrer">${h.title}</a>
-          </div>
-          <div class="headline-meta">
-            <span>${h.source}</span>
-            <span>${formatDate(h.published_at)}</span>
-          </div>
+function renderCompareCard(id, data) {
+  document.getElementById(id).innerHTML = `
+    <div class="compare-ticker">${data.ticker}</div>
+    <div style="color:#ffffff44;font-size:11px;margin-bottom:12px">${data.company}</div>
+    <span class="compare-signal ${data.overall_signal}">● ${data.overall_signal.toUpperCase()}</span>
+    <div style="display:flex;gap:16px;margin-bottom:14px">
+      <div><div style="color:#ffffff33;font-size:9px;letter-spacing:.1em;margin-bottom:3px">CONFIDENCE</div><div style="color:#fff;font-size:1.1rem;font-weight:700">${(data.avg_confidence*100).toFixed(0)}%</div></div>
+      <div><div style="color:#ffffff33;font-size:9px;letter-spacing:.1em;margin-bottom:3px">HEADLINES</div><div style="color:#fff;font-size:1.1rem;font-weight:700">${data.headline_count}</div></div>
+    </div>
+    ${["positive","negative","neutral"].map(s=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="width:56px;font-size:10px;color:${s==="positive"?"#00ff9c":s==="negative"?"#ff6b6b":"#ffd700"};text-transform:uppercase">${s}</span>
+        <div style="flex:1;height:4px;background:#ffffff08;border-radius:2px">
+          <div style="height:100%;width:${(data.breakdown[s]/data.headline_count*100).toFixed(0)}%;background:${s==="positive"?"#00ff9c":s==="negative"?"#ff6b6b":"#ffd700"};border-radius:2px"></div>
         </div>
-        <div class="confidence-text ${h.sentiment}">
-          ${(h.confidence * 100).toFixed(0)}%
-        </div>
-      `;
-      list.appendChild(item);
+        <span style="color:#ffffff44;font-size:10px;width:14px">${data.breakdown[s]}</span>
+      </div>`).join("")}`;
+}
+
+function renderCompareChart(dA, dB) {
+  if (compareChartInst) compareChartInst.destroy();
+  compareChartInst = new Chart(document.getElementById("compareChart"), {
+    type: "bar",
+    data: {
+      labels: ["Positive","Negative","Neutral"],
+      datasets: [
+        { label:dA.ticker, data:[dA.breakdown.positive,dA.breakdown.negative,dA.breakdown.neutral], backgroundColor:"#00ff9c55", borderColor:"#00ff9c", borderWidth:1, borderRadius:4 },
+        { label:dB.ticker, data:[dB.breakdown.positive,dB.breakdown.negative,dB.breakdown.neutral], backgroundColor:"#00cfff55", borderColor:"#00cfff", borderWidth:1, borderRadius:4 },
+      ]
+    },
+    options: {
+      responsive:true,
+      scales: {
+        y:{ ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{color:"#ffffff08"} },
+        x:{ ticks:{color:"#ffffff88",font:{family:"monospace",size:11}}, grid:{display:false} }
+      },
+      plugins:{ legend:{ labels:{ color:"#ffffff88", font:{family:"monospace",size:11} } } }
+    }
+  });
+}
+
+// ── Full history ───────────────────────────────────────────────────────────
+async function loadFullHistory() {
+  const filter = document.getElementById("historyFilter").value;
+  const url = filter ? `${API}/history?ticker=${filter}&limit=30` : `${API}/history?limit=30`;
+  try {
+    const records = await fetch(url).then(r => r.json());
+    // Populate filter
+    const tickers = [...new Set(records.map(r => r.ticker))];
+    const sel = document.getElementById("historyFilter");
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">All tickers</option>`;
+    tickers.forEach(t => {
+      const o = document.createElement("option");
+      o.value = t; o.textContent = t; if(t===cur) o.selected=true;
+      sel.appendChild(o);
     });
-
-    document.getElementById("resultCard").classList.add("visible");
-    document.getElementById("resultCard").scrollIntoView({ behavior: "smooth" });
-  }
-
-  // ── History ────────────────────────────────────────────────────────────────
-
-  async function loadHistory() {
-    try {
-      const response = await fetch(`${API}/history?limit=8`);
-      const data = await response.json();
-      renderHistory(data);
-    } catch (err) {
-      console.error("Could not load history:", err);
-    }
-  }
-
-  function renderHistory(records) {
-    const list = document.getElementById("historyList");
+    // Render list
+    const list = document.getElementById("fullHistoryList");
     list.innerHTML = "";
-
-    if (records.length === 0) {
-      list.innerHTML = `<div style="color:#ffffff22;font-size:12px;padding:12px 0">No searches yet</div>`;
+    if (!records.length) {
+      list.innerHTML = `<div style="color:#ffffff22;font-size:12px;padding:20px 0;text-align:center">No searches yet</div>`;
       return;
     }
-
-    records.forEach((r) => {
+    records.forEach(r => {
       const item = document.createElement("div");
       item.className = "history-item";
-      item.onclick = () => {
-        document.getElementById("tickerInput").value = r.ticker;
-        analyze();
-      };
+      item.onclick = () => { document.getElementById("tickerInput").value=r.ticker; switchTab("analyze"); analyze(); };
       item.innerHTML = `
         <div>
-          <div class="history-ticker">${r.ticker}</div>
+          <div class="history-ticker">${r.ticker} <span style="color:#ffffff44;font-weight:400;font-size:11px">— ${r.company||""}</span></div>
           <div class="history-time">${formatDate(r.created_at)}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:16px">
-          <span style="color:#ffffff44;font-size:12px">${r.headline_count} headlines</span>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span style="color:#ffffff33;font-size:11px">${r.headline_count} headlines · ${(r.avg_confidence*100).toFixed(0)}% conf</span>
           <span class="history-signal ${r.signal}">${r.signal.toUpperCase()}</span>
-        </div>
-      `;
+        </div>`;
       list.appendChild(item);
     });
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  function setLoading(on) {
-    document.getElementById("loading").classList.toggle("visible", on);
-    document.getElementById("analyzeBtn").disabled = on;
-  }
-
-  function showError(msg) {
-    const el = document.getElementById("errorMsg");
-    el.textContent = `⚠ ${msg}`;
-    el.classList.add("visible");
-  }
-
-  function hideError() {
-    document.getElementById("errorMsg").classList.remove("visible");
-  }
-
-  function formatDate(iso) {
-    if (!iso) return "";
-    return new Date(iso).toLocaleString([], {
-      month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit"
+    // Trend chart
+    const chartRecords = records.slice(0,10).reverse();
+    if (trendChartInst) trendChartInst.destroy();
+    trendChartInst = new Chart(document.getElementById("trendChart"), {
+      type: "line",
+      data: {
+        labels: chartRecords.map(r => `${r.ticker} ${formatDate(r.created_at)}`),
+        datasets: [
+          { label:"Positive", data:chartRecords.map(r=>r.breakdown?.positive||0), borderColor:"#00ff9c", backgroundColor:"#00ff9c18", tension:0.4, fill:true, pointRadius:4 },
+          { label:"Negative", data:chartRecords.map(r=>r.breakdown?.negative||0), borderColor:"#ff6b6b", backgroundColor:"#ff6b6b18", tension:0.4, fill:true, pointRadius:4 },
+          { label:"Neutral",  data:chartRecords.map(r=>r.breakdown?.neutral ||0), borderColor:"#ffd700", backgroundColor:"#ffd70018", tension:0.4, fill:true, pointRadius:4 },
+        ]
+      },
+      options: {
+        responsive:true,
+        scales: {
+          y:{ ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{color:"#ffffff08"} },
+          x:{ ticks:{color:"#ffffff33",font:{family:"monospace",size:9},maxRotation:30}, grid:{display:false} }
+        },
+        plugins:{ legend:{ labels:{ color:"#ffffff88", font:{family:"monospace",size:11} } } }
+      }
     });
-  }
+  } catch(err) { console.error(err); }
+}
 
-  // Run on page load
-  renderQuickPicks();
-  loadHistory();
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById("skeletonCard").classList.toggle("visible", on);
+  document.getElementById("analyzeBtn").disabled = on;
+  document.getElementById("analyzeBtn").textContent = on ? "..." : "ANALYZE";
+}
+function showError(msg) { const el=document.getElementById("errorMsg"); el.textContent=`⚠ ${msg}`; el.classList.add("visible"); }
+function hideError() { document.getElementById("errorMsg").classList.remove("visible"); }
+function formatDate(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
+renderQuickPicks();
 </script>
 </body>
 </html>
