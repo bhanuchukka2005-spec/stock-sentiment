@@ -1,11 +1,21 @@
 # main.py
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from model import analyze_sentiment, analyze_batch
 from news import fetch_headlines, get_company_name
 from database import save_search, get_search_history, get_ticker_stats
 
 app = FastAPI(title="Stock Sentiment Engine", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
@@ -28,9 +38,6 @@ def analyze_single_headline(text: str):
 
 @app.get("/analyze/{ticker}")
 def analyze_ticker(ticker: str, max_headlines: int = 10):
-    """
-    Full pipeline: fetch news → run FinBERT → aggregate → save to DB → return.
-    """
     ticker = ticker.upper()
     company_name = get_company_name(ticker)
 
@@ -75,38 +82,27 @@ def analyze_ticker(ticker: str, max_headlines: int = 10):
         ],
     }
 
-    # NEW: save this result to the database
-    # We do this after building the result so saving can't break the response
     try:
         save_search(ticker, company_name or ticker, result)
     except Exception as e:
-        # If saving fails, we still return the result — don't break the user's request
         print(f"Warning: could not save to database: {e}")
 
     return result
 
 
-# ── NEW: History endpoints ────────────────────────────────────────────────────
-
 @app.get("/history")
 def get_history(ticker: str = None, limit: int = 20):
-    """
-    Get past searches.
-    
-    /history              → last 20 searches across all tickers
-    /history?ticker=TSLA  → last 20 TSLA searches
-    /history?limit=5      → last 5 searches
-    """
     return get_search_history(ticker=ticker, limit=limit)
 
 
 @app.get("/stats/{ticker}")
 def ticker_stats(ticker: str):
-    """
-    Aggregated stats for a ticker across all its searches.
-    Shows signal trend over time.
-    """
     stats = get_ticker_stats(ticker)
     if stats["total_searches"] == 0:
         raise HTTPException(status_code=404, detail=f"No history found for {ticker}")
     return stats
+
+
+# ── IMPORTANT: this must be LAST — after all routes ──────────────────────────
+# Serves frontend/index.html at http://localhost:8000/
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
