@@ -186,3 +186,46 @@ def get_search_query(ticker: str) -> str:
         # Unknown ticker — search by ticker name only
         # NewsAPI is good enough to find relevant articles
         return ticker
+    
+def get_price_data(ticker: str) -> dict:
+    """
+    Fetch current price and % change for a ticker.
+    
+    Returns:
+    {
+        "price": 182.63,
+        "change_pct": -1.24,     # negative = down today
+        "change_abs": -2.30,
+        "prev_close": 184.93,
+        "currency": "USD"
+    }
+    
+    Returns None if the ticker is not found or data unavailable.
+    This is non-critical — if it fails we still return sentiment data.
+    """
+    try:
+        import yfinance as yf
+
+        # yf.Ticker fetches data for one symbol
+        stock = yf.Ticker(ticker)
+
+        # .fast_info gives us lightweight price data
+        # faster than .info which downloads a huge dict
+        info = stock.fast_info
+
+        price     = round(float(info.last_price), 2)
+        prev      = round(float(info.previous_close), 2)
+        change    = round(price - prev, 2)
+        change_pct = round((change / prev) * 100, 2)
+
+        return {
+            "price":      price,
+            "change_pct": change_pct,
+            "change_abs": change,
+            "prev_close": prev,
+            "currency":   getattr(info, "currency", "USD"),
+        }
+    except Exception:
+        # Price fetch failing should never break the sentiment analysis
+        # Return None silently — frontend handles this case
+        return None

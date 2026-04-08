@@ -148,6 +148,15 @@
     ::-webkit-scrollbar { width:4px; }
     ::-webkit-scrollbar-track { background:transparent; }
     ::-webkit-scrollbar-thumb { background:#00ff9c22; border-radius:4px; }
+
+    /* Weighted score note in donut tooltip */
+    .weighted-note {
+      font-size: 10px;
+      color: #ffffff33;
+      font-family: 'Courier New', monospace;
+      margin-top: 8px;
+      letter-spacing: 0.08em;
+    }
   </style>
 </head>
 <body>
@@ -195,9 +204,22 @@
         <div>
           <div class="ticker-name" id="resTicker"></div>
           <div class="company-name" id="resCompany"></div>
+          <!-- NEW: price line -->
+          <div id="resPrice" style="margin-top:8px;display:none;font-family:'Courier New',monospace;"></div>
         </div>
         <div class="signal-badge" id="resBadge"></div>
       </div>
+
+      <!-- NEW: explanation box -->
+      <div id="explanationBox" style="
+        display:none;
+        background:#0a0e1a;
+        border:1px solid #ffffff0f;
+        border-radius:10px;
+        padding:16px 18px;
+        margin-bottom:22px;
+        font-family:'Courier New',monospace;
+      "></div>
       <div class="stats-row">
         <div class="stat-box"><div class="stat-label">HEADLINES</div><div class="stat-value" id="resCount"></div></div>
         <div class="stat-box"><div class="stat-label">CONFIDENCE</div><div class="stat-value" id="resConfidence"></div></div>
@@ -365,14 +387,32 @@ async function analyze() {
 function renderResult(data) {
   document.getElementById("resTicker").textContent  = data.ticker;
   document.getElementById("resCompany").textContent = data.company;
+
   const badge = document.getElementById("resBadge");
   badge.textContent = `● ${data.overall_signal.toUpperCase()}`;
   badge.className   = `signal-badge ${data.overall_signal}`;
+
+  // NEW: show price if available
+  const priceEl = document.getElementById("resPrice");
+  if (data.price && data.price.price) {
+    const p = data.price;
+    const up = p.change_pct >= 0;
+    priceEl.innerHTML = `
+      <span style="color:#fff;font-size:1.1rem;font-weight:700">${p.currency} ${p.price.toLocaleString()}</span>
+      <span style="font-size:12px;margin-left:8px;color:${up?"#00ff9c":"#ff6b6b"}">
+        ${up?"▲":"▼"} ${Math.abs(p.change_pct)}% today
+      </span>`;
+    priceEl.style.display = "block";
+  } else {
+    priceEl.style.display = "none";
+  }
+
   document.getElementById("resCount").textContent      = data.headline_count;
   document.getElementById("resConfidence").textContent = `${(data.avg_confidence*100).toFixed(0)}%`;
   document.getElementById("resPositive").textContent   = data.breakdown.positive;
   document.getElementById("resNegative").textContent   = data.breakdown.negative;
   document.getElementById("resNeutral").textContent    = data.breakdown.neutral;
+
   const t = data.headline_count;
   document.getElementById("barPositive").style.width = `${(data.breakdown.positive/t)*100}%`;
   document.getElementById("barNegative").style.width = `${(data.breakdown.negative/t)*100}%`;
@@ -381,27 +421,66 @@ function renderResult(data) {
   document.getElementById("countNegative").textContent = data.breakdown.negative;
   document.getElementById("countNeutral").textContent  = data.breakdown.neutral;
 
-  // Donut chart
+  // NEW: explanation box
+  if (data.explanation) {
+    const ex = data.explanation;
+    const exEl = document.getElementById("explanationBox");
+    const signalColor = data.overall_signal === "positive" ? "#00ff9c"
+                      : data.overall_signal === "negative" ? "#ff6b6b" : "#ffd700";
+    exEl.innerHTML = `
+      <div style="color:${signalColor};font-size:13px;font-weight:700;margin-bottom:8px">
+        ${ex.summary}
+      </div>
+      <div style="color:#ffffff66;font-size:12px;margin-bottom:10px">${ex.driver}</div>
+      ${ex.top_headlines.length ? `
+        <div style="color:#ffffff33;font-size:9px;letter-spacing:.12em;margin-bottom:8px">
+          // KEY HEADLINES DRIVING THE SIGNAL
+        </div>
+        ${ex.top_headlines.map(h => `
+          <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;
+                      padding:8px 10px;background:#ffffff04;border-radius:6px;">
+            <div class="headline-dot ${h.sentiment}" style="margin-top:4px;flex-shrink:0"></div>
+            <div style="flex:1;font-size:11px;color:#ffffffaa;line-height:1.5">${h.title}</div>
+            <div style="font-size:11px;font-weight:700;color:${signalColor};flex-shrink:0">
+              ${(h.confidence*100).toFixed(0)}%
+            </div>
+          </div>`).join("")}` : ""}
+      <div style="color:#ffffff44;font-size:11px;margin-top:10px;
+                  padding-top:10px;border-top:1px solid #ffffff08">
+        ${ex.confidence_note}
+      </div>`;
+    exEl.style.display = "block";
+  }
+
+  // Donut chart — use weighted scores not raw counts
   if (donutChartInst) donutChartInst.destroy();
+  const ws = data.weighted_scores || {};
   donutChartInst = new Chart(document.getElementById("donutChart"), {
     type: "doughnut",
     data: {
       labels: ["Positive","Negative","Neutral"],
       datasets: [{
-        data: [data.breakdown.positive, data.breakdown.negative, data.breakdown.neutral],
+        data: [ws.positive||0, ws.negative||0, ws.neutral||0],
         backgroundColor: ["#00ff9c33","#ff6b6b33","#ffd70033"],
-        borderColor: ["#00ff9c","#ff6b6b","#ffd700"],
+        borderColor:     ["#00ff9c","#ff6b6b","#ffd700"],
         borderWidth: 2,
       }]
     },
     options: {
       responsive: true,
-      plugins: { legend: { labels: { color:"#ffffff88", font:{ family:"monospace", size:11 } } } },
+      plugins: {
+        legend: { labels: { color:"#ffffff88", font:{ family:"monospace", size:11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.raw.toFixed(1)}% weighted`
+          }
+        }
+      },
       cutout: "65%",
     }
   });
 
-  // Bar chart — confidence per headline
+  // Bar chart
   if (barChartInst) barChartInst.destroy();
   barChartInst = new Chart(document.getElementById("barChart"), {
     type: "bar",
@@ -410,22 +489,24 @@ function renderResult(data) {
       datasets: [{
         label: "Confidence %",
         data: data.headlines.map(h => +(h.confidence*100).toFixed(1)),
-        backgroundColor: data.headlines.map(h => h.sentiment==="positive"?"#00ff9c88":h.sentiment==="negative"?"#ff6b6b88":"#ffd70088"),
-        borderColor: data.headlines.map(h => h.sentiment==="positive"?"#00ff9c":h.sentiment==="negative"?"#ff6b6b":"#ffd700"),
-        borderWidth: 1, borderRadius: 3,
+        backgroundColor: data.headlines.map(h =>
+          h.sentiment==="positive"?"#00ff9c88":h.sentiment==="negative"?"#ff6b6b88":"#ffd70088"),
+        borderColor: data.headlines.map(h =>
+          h.sentiment==="positive"?"#00ff9c":h.sentiment==="negative"?"#ff6b6b":"#ffd700"),
+        borderWidth:1, borderRadius:3,
       }]
     },
     options: {
-      responsive: true,
+      responsive:true,
       scales: {
-        y: { min:0, max:100, ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{color:"#ffffff08"} },
-        x: { ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{display:false} }
+        y:{ min:0, max:100, ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{color:"#ffffff08"} },
+        x:{ ticks:{color:"#ffffff44",font:{family:"monospace",size:10}}, grid:{display:false} }
       },
-      plugins: { legend:{ display:false } }
+      plugins:{ legend:{display:false} }
     }
   });
 
-  // Headlines list
+  // Headlines
   const list = document.getElementById("headlinesList");
   list.innerHTML = "";
   data.headlines.forEach(h => {
@@ -434,12 +515,18 @@ function renderResult(data) {
     item.innerHTML = `
       <div class="headline-dot ${h.sentiment}"></div>
       <div class="headline-text">
-        <div class="headline-title-text"><a href="${h.url}" target="_blank" rel="noreferrer">${h.title}</a></div>
-        <div class="headline-meta"><span>${h.source}</span><span>${formatDate(h.published_at)}</span></div>
+        <div class="headline-title-text">
+          <a href="${h.url}" target="_blank" rel="noreferrer">${h.title}</a>
+        </div>
+        <div class="headline-meta">
+          <span>${h.source}</span><span>${formatDate(h.published_at)}</span>
+        </div>
       </div>
       <div class="headline-right">
         <span class="conf-pct ${h.sentiment}">${(h.confidence*100).toFixed(0)}%</span>
-        <div class="conf-bar-track"><div class="conf-bar-fill ${h.sentiment}" style="width:${(h.confidence*100).toFixed(0)}%"></div></div>
+        <div class="conf-bar-track">
+          <div class="conf-bar-fill ${h.sentiment}" style="width:${(h.confidence*100).toFixed(0)}%"></div>
+        </div>
       </div>`;
     list.appendChild(item);
   });
@@ -447,7 +534,6 @@ function renderResult(data) {
   document.getElementById("resultCard").classList.add("visible");
   document.getElementById("resultCard").scrollIntoView({ behavior:"smooth" });
 }
-
 // ── Compare ────────────────────────────────────────────────────────────────
 async function compare() {
   const a = document.getElementById("compareA").value.trim().toUpperCase();

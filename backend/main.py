@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from model import analyze_sentiment, analyze_batch
-from news import fetch_headlines, get_company_name
+from news import fetch_headlines, get_company_name, get_price_data
 from database import save_search, get_search_history, get_ticker_stats
 
 app = FastAPI(title="Stock Sentiment Engine", version="1.0.0")
@@ -36,10 +36,57 @@ def analyze_single_headline(text: str):
     }
 
 
+def generate_explanation(ticker, overall_signal, counts, weighted_scores,
+                          headlines_with_sentiment, avg_confidence):
+    total = sum(counts.values())
+    dominant = overall_signal
+    signal_word = {"positive": "BULLISH", "negative": "BEARISH", "neutral": "NEUTRAL"}[dominant]
+    dominant_count  = counts[dominant]
+    dominant_pct    = round(dominant_count / total * 100)
+    dominant_weight = weighted_scores[dominant]
+
+    summary = (
+        f"Signal is {signal_word} — "
+        f"{dominant_count} of {total} headlines are {dominant} "
+        f"({dominant_pct}%), carrying {dominant_weight:.1f}% of weighted confidence."
+    )
+    opposing = "positive" if dominant != "positive" else "negative"
+    driver = (
+        f"{dominant.capitalize()} headlines carry {dominant_weight:.1f}% "
+        f"of the confidence-weighted score, vs "
+        f"{weighted_scores.get(opposing, 0):.1f}% for the opposing signal."
+    )
+    supporting = sorted(
+        [h for h in headlines_with_sentiment if h["sentiment"] == dominant],
+        key=lambda x: x["confidence"], reverse=True
+    )
+    top_headlines = [
+        {"title": h["title"], "source": h["source"],
+         "sentiment": h["sentiment"], "confidence": h["confidence"]}
+        for h in supporting[:3]
+    ]
+    high_conf = sum(1 for h in headlines_with_sentiment if h["confidence"] >= 0.80)
+    if avg_confidence >= 0.80:
+        conf_note = f"High confidence — model is certain on {high_conf} of {total} headlines."
+    elif avg_confidence >= 0.65:
+        conf_note = "Moderate confidence — some headlines are ambiguous. Treat signal with caution."
+    else:
+        conf_note = "Low confidence — headlines are mixed or ambiguous. Signal may not be reliable."
+
+    return {
+        "summary": summary, "driver": driver,
+        "top_headlines": top_headlines,
+        "confidence_note": conf_note, "signal_word": signal_word,
+    }
+
+
 @app.get("/analyze/{ticker}")
 def analyze_ticker(ticker: str, max_headlines: int = 10):
     ticker = ticker.upper()
     company_name = get_company_name(ticker)
+
+    # Fetch price — non-blocking, None if unavailable
+    price_data = get_price_data(ticker)
 
     try:
         headlines = fetch_headlines(ticker, company_name, max_results=max_headlines)
@@ -49,37 +96,60 @@ def analyze_ticker(ticker: str, max_headlines: int = 10):
     if not headlines:
         raise HTTPException(status_code=404, detail=f"No headlines found for {ticker}.")
 
-    texts = [h["full_text"] for h in headlines]
+    texts     = [h["full_text"] for h in headlines]
     sentiments = analyze_batch(texts)
 
-    counts = {"positive": 0, "negative": 0, "neutral": 0}
-    total_confidence = 0
-    for s in sentiments:
-        counts[s["label"]] += 1
-        total_confidence += s["confidence"]
+    counts          = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
+    weighted_scores = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
+    total_confidence = 0.0
 
-    overall_signal = max(counts, key=counts.get)
+    for s in sentiments:
+        counts[s["label"]]          += 1
+        weighted_scores[s["label"]] += s["confidence"]
+        total_confidence            += s["confidence"]
+
+    # Convert counts back to int for display
+    counts = {k: int(v) for k, v in counts.items()}
+
+    overall_signal = max(weighted_scores, key=weighted_scores.get)
     avg_confidence = round(total_confidence / len(sentiments), 4)
 
+    total_weight = sum(weighted_scores.values())
+    weighted_pct = {k: round(v / total_weight * 100, 1) for k, v in weighted_scores.items()}
+
+    headlines_with_sentiment = [
+        {
+            "title":        h["title"],
+            "source":       h["source"],
+            "published_at": h["published_at"],
+            "url":          h["url"],
+            "sentiment":    s["label"],
+            "confidence":   s["confidence"],
+            "scores":       s["scores"],
+        }
+        for h, s in zip(headlines, sentiments)
+    ]
+
+    explanation = generate_explanation(
+        ticker=ticker,
+        overall_signal=overall_signal,
+        counts=counts,
+        weighted_scores=weighted_pct,
+        headlines_with_sentiment=headlines_with_sentiment,
+        avg_confidence=avg_confidence,
+    )
+
     result = {
-        "ticker": ticker,
-        "company": company_name or ticker,
-        "overall_signal": overall_signal,
-        "avg_confidence": avg_confidence,
-        "headline_count": len(headlines),
-        "breakdown": counts,
-        "headlines": [
-            {
-                "title": h["title"],
-                "source": h["source"],
-                "published_at": h["published_at"],
-                "url": h["url"],
-                "sentiment": s["label"],
-                "confidence": s["confidence"],
-                "scores": s["scores"],
-            }
-            for h, s in zip(headlines, sentiments)
-        ],
+        "ticker":          ticker,
+        "company":         company_name or ticker,
+        "overall_signal":  overall_signal,
+        "avg_confidence":  avg_confidence,
+        "headline_count":  len(headlines),
+        "breakdown":       counts,
+        "weighted_scores": weighted_pct,
+        "price":           price_data,
+        "explanation":     explanation,
+        "headlines":       headlines_with_sentiment,
     }
 
     try:
@@ -103,6 +173,5 @@ def ticker_stats(ticker: str):
     return stats
 
 
-# ── IMPORTANT: this must be LAST — after all routes ──────────────────────────
-# Serves frontend/index.html at http://localhost:8000/
+# MUST be last — after all routes
 app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
