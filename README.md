@@ -59,16 +59,6 @@ Generic models (VADER, TextBlob) are trained on social media and reviews. They m
 
 Majority vote treats a 51% confident headline the same as a 96% confident one. If 4 headlines are neutral at 55% confidence and 3 are negative at 92% confidence, majority vote says "neutral" but the weighted score says "bearish" — which is the more reliable signal.
 
-```python
-# Simple majority vote (old approach — wrong)
-winner = max(counts, key=counts.get)
-
-# Confidence-weighted scoring (current approach)
-for sentiment, confidence in results:
-    weighted_scores[sentiment] += confidence
-winner = max(weighted_scores, key=weighted_scores.get)
-```
-
 ### Why serve the frontend through FastAPI?
 
 Serving `index.html` as a FastAPI static file means frontend and backend share the same origin (`localhost:8000`). This eliminates CORS issues entirely — no proxy config, no extra server, one command to run everything.
@@ -123,6 +113,7 @@ stock-sentiment/
 │   └── requirements.txt
 ├── frontend/
 │   └── index.html           ← single-page dashboard (no build step)
+├── LICENSE
 └── README.md
 ```
 
@@ -147,8 +138,7 @@ Sign up at [newsapi.org](https://newsapi.org) — free tier gives 100 requests/d
 
 ```bash
 cp .env.example .env
-# Edit .env and add your key:
-# NEWSAPI_KEY=your_key_here
+# Edit .env and paste your key as: NEWSAPI_KEY=your_key_here
 ```
 
 ### 3. Run
@@ -165,135 +155,13 @@ Open **http://localhost:8000** in your browser.
 
 ## CI/CD — GitHub Actions
 
-This project uses two GitHub Actions workflows to automate testing and deployment.
+This project uses two GitHub Actions workflows.
 
-### Workflow 1 — Continuous Integration (`ci.yml`)
+**`ci.yml`** runs on every push and pull request. It installs dependencies, runs flake8 linting, and executes the full pytest suite. The HuggingFace model and pip packages are both cached so runs after the first are fast. PRs cannot be merged if this workflow fails.
 
-Runs on every push and pull request. Lints the code, runs unit tests, and does a model smoke-test to verify FinBERT loads correctly.
+**`deploy.yml`** runs only when code lands on `main`. It SSHs into the production server, pulls the latest code, reinstalls any changed dependencies, and restarts the app via systemctl.
 
-**Create `.github/workflows/ci.yml`:**
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: ["**"]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache HuggingFace model
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: finbert-model-v1
-
-      - name: Install dependencies
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov flake8
-
-      - name: Lint with flake8
-        working-directory: backend
-        run: |
-          # Stop build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Warn on style issues but don't fail
-          flake8 . --count --max-line-length=120 --statistics --exit-zero
-
-      - name: Run unit tests
-        working-directory: backend
-        env:
-          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
-        run: |
-          pytest test_model.py test_news.py -v --tb=short
-
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          fail_ci_if_error: false
-```
-
----
-
-### Workflow 2 — Deploy on merge to main (`deploy.yml`)
-
-Runs only when code is merged to `main`. Connects to your server via SSH and restarts the app.
-
-**Create `.github/workflows/deploy.yml`:**
-
-```yaml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd /opt/stock-sentiment-engine
-            git pull origin main
-            source venv/bin/activate
-            pip install -r backend/requirements.txt --quiet
-            sudo systemctl restart stock-sentiment
-            echo "Deploy complete ✓"
-```
-
----
-
-### Setting up GitHub Secrets
-
-Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**.
-
-Add these secrets:
-
-| Secret | Description |
-|---|---|
-| `NEWSAPI_KEY` | Your NewsAPI key (used in CI tests) |
-| `DEPLOY_HOST` | IP address or domain of your server |
-| `DEPLOY_USER` | SSH username on your server (e.g. `ubuntu`) |
-| `DEPLOY_SSH_KEY` | Your private SSH key (contents of `~/.ssh/id_rsa`) |
-
----
-
-### CI/CD Flow Summary
+### CI/CD Flow
 
 ```
 Developer pushes code
@@ -304,7 +172,7 @@ Developer pushes code
         ├── flake8 lint
         ├── pytest (model + news tests)
         └── pass / fail ← PR is blocked if this fails
-        
+
 Merge PR into main
         │
         ▼
@@ -316,73 +184,51 @@ Merge PR into main
         └── systemctl restart ← app is live with new code
 ```
 
+### GitHub Secrets required
+
+Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+| Secret | Description |
+|---|---|
+| `NEWSAPI_KEY` | Your NewsAPI key — used in CI tests |
+| `DEPLOY_HOST` | IP address or domain of your server |
+| `DEPLOY_USER` | SSH username on your server (e.g. `ubuntu`) |
+| `DEPLOY_SSH_KEY` | Your private SSH key (contents of `~/.ssh/id_rsa`) |
+
+The workflow YAML files live in `.github/workflows/` in the repo.
+
 ---
 
 ## API Reference
 
-All endpoints are documented interactively at `http://localhost:8000/docs`
+All endpoints are documented interactively at `http://localhost:8000/docs`.
 
 ### `GET /analyze/{ticker}`
 
-Full analysis pipeline for a stock ticker.
+Full analysis pipeline for a stock ticker. Returns the overall signal, confidence breakdown, weighted scores, current price, plain-English explanation, and all headlines with their individual sentiments.
 
-**Parameters:**
-
-| Name | Type | Default | Description |
+| Parameter | Type | Default | Description |
 |---|---|---|---|
 | `ticker` | path | required | Stock symbol (TSLA, AAPL, TCS, etc.) |
 | `max_headlines` | query | 10 | Number of headlines to analyze (1–20) |
 
-**Response:**
-```json
-{
-  "ticker": "TSLA",
-  "company": "Tesla",
-  "overall_signal": "bearish",
-  "avg_confidence": 0.7812,
-  "headline_count": 10,
-  "breakdown": { "positive": 2, "negative": 6, "neutral": 2 },
-  "weighted_scores": { "positive": 18.4, "negative": 58.2, "neutral": 23.4 },
-  "price": {
-    "price": 248.50,
-    "change_pct": -2.14,
-    "currency": "USD"
-  },
-  "explanation": {
-    "summary": "Signal is BEARISH — 6 of 10 headlines are negative (60%), carrying 58.2% of weighted confidence.",
-    "top_headlines": ["..."],
-    "confidence_note": "Moderate confidence — treat signal with caution."
-  }
-}
-```
-
 ### `GET /history`
 
-Fetch past searches.
-
-```bash
-GET /history              # last 20 searches
-GET /history?ticker=TSLA  # last 20 TSLA searches
-GET /history?limit=5      # last 5 searches
-```
+Returns past searches. Pass `?ticker=TSLA` to filter by symbol, `?limit=5` to cap results. Defaults to the last 20 searches across all tickers.
 
 ### `GET /stats/{ticker}`
 
-Aggregated signal stats for a ticker across all searches.
+Returns aggregated signal stats for a ticker — total searches, signal history, signal counts, and the most common signal over time.
 
 ### `GET /analyze/headline`
 
-Analyze a single piece of text directly.
-
-```bash
-GET /analyze/headline?text=Apple+reports+record+quarterly+revenue
-```
+Analyze a single piece of text directly. Pass the text as a `?text=` query parameter. Useful for testing the model on arbitrary headlines without fetching news.
 
 ---
 
 ## Supported Tickers
 
-The app works with any ticker NewsAPI can find articles for. These have optimized company-name search:
+The app works with any ticker NewsAPI can find articles for. These have optimized company-name queries built in:
 
 **US Tech:** AAPL, GOOGL, MSFT, AMZN, META, NVDA, TSLA, NFLX, UBER, AMD, INTC, PYPL, SHOP, COIN, PLTR
 
@@ -394,17 +240,17 @@ The app works with any ticker NewsAPI can find articles for. These have optimize
 
 **Global:** SAMSUNG, SONY, TOYOTA, HSBC, BITCOIN, ETHEREUM
 
-> Any ticker not in this list still works — the app searches by ticker symbol directly.
+Any ticker not in this list still works — the app searches by ticker symbol directly.
 
 ---
 
 ## Known Limitations
 
-**FinBERT struggles with informal language.** "Tesla crushes earnings" may score negative because "crushes" is not formal financial vocabulary. The model performs best on Reuters/Bloomberg-style headlines.
+**FinBERT struggles with informal language.** Phrases like "Tesla crushes earnings" may score incorrectly because the model is trained on formal financial text. It performs best on Reuters/Bloomberg-style headlines.
 
-**NewsAPI free tier = 100 requests/day.** Each `/analyze/{ticker}` call uses 1 request. For development this is sufficient; production would need a paid tier.
+**NewsAPI free tier = 100 requests/day.** Each `/analyze/{ticker}` call uses one request. Sufficient for development; production would need a paid plan or a different news source.
 
-**No real-time streaming.** Headlines are fetched on-demand, not pushed. For live streaming you'd need a WebSocket-based ingestion layer.
+**No real-time streaming.** Headlines are fetched on-demand, not pushed. Live streaming would require a WebSocket-based ingestion layer.
 
 ---
 
@@ -419,29 +265,7 @@ The app works with any ticker NewsAPI can find articles for. These have optimize
 
 ## License
 
-```
-MIT License
-
-Copyright (c) 2025 Ch. Bhanu Prakash
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
