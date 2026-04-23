@@ -153,36 +153,6 @@ Open **http://localhost:8000** in your browser.
 
 ---
 
-## CI/CD — GitHub Actions
-
-This project uses two GitHub Actions workflows.
-
-**`ci.yml`** runs on every push and pull request. It installs dependencies, runs flake8 linting, and executes the full pytest suite. The HuggingFace model and pip packages are both cached so runs after the first are fast. PRs cannot be merged if this workflow fails.
-
-**`deploy.yml`** runs only when code lands on `main`. It SSHs into the production server, pulls the latest code, reinstalls any changed dependencies, and restarts the app via systemctl.
-
-### CI/CD Flow
-
-```
-Developer pushes code
-        │
-        ▼
-  CI workflow runs
-        │
-        ├── flake8 lint
-        ├── pytest (model + news tests)
-        └── pass / fail ← PR is blocked if this fails
-
-Merge PR into main
-        │
-        ▼
-  Deploy workflow runs
-        │
-        ├── SSH into server
-        ├── git pull
-        ├── pip install
-        └── systemctl restart ← app is live with new code
-```
 
 ### GitHub Secrets required
 
