@@ -1,22 +1,21 @@
-# 📈 Stock Sentiment Engine
+# Stock Sentiment Engine
 
-> Real-time financial sentiment analysis using FinBERT — confidence-weighted Bullish / Bearish / Neutral signals with plain-English explainability.
+> Real-time financial sentiment analysis using FinBERT — confidence-weighted market signals with plain-English explainability.
 
-[![CI](https://github.com/bhanuchukka2005-spec/stock-sentiment-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/bhanuchukka2005-spec/stock-sentiment-engine/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi)
+![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.135-green?style=flat-square)
 ![FinBERT](https://img.shields.io/badge/Model-FinBERT-orange?style=flat-square)
-![SQLite](https://img.shields.io/badge/DB-SQLite-003B57?style=flat-square&logo=sqlite)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker)
+![SQLite](https://img.shields.io/badge/DB-SQLite-lightgrey?style=flat-square)
+![CI](https://img.shields.io/github/actions/workflow/status/bhanuchukka2005-spec/stock-sentiment-engine/ci.yml?label=CI&style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 ---
 
 ## What it does
 
-Type any stock ticker → get a **Bullish / Bearish / Neutral** signal backed by live news.
+Type a stock ticker → get a **Bullish / Bearish / Neutral** signal backed by real news.
 
-Fetches real headlines from NewsAPI, runs each through **FinBERT** (a BERT model fine-tuned specifically on financial text), and aggregates results using **confidence-weighted scoring** — high-certainty headlines count more than ambiguous ones. Every result explains *why* the signal is what it is.
+The app fetches live headlines from NewsAPI, runs each one through **FinBERT** (a BERT model fine-tuned on financial text), and aggregates the results using confidence-weighted scoring. High-certainty headlines count more than ambiguous ones. Every result explains *why* the signal is what it is.
 
 ---
 
@@ -28,50 +27,65 @@ User types "TSLA"
        ▼
  FastAPI Backend
        │
-       ├──► NewsAPI          → 10 live headlines
-       ├──► Yahoo Finance    → current price + % change today
-       ├──► FinBERT          → sentiment + confidence per headline
-       ├──► Weighted aggregation → overall signal
-       ├──► Explainability   → top 3 driving headlines + certainty note
-       ├──► SQLite           → save to history
-       └──► JSON response    → frontend dashboard
+       ├──► NewsAPI → 10 live headlines
+       │
+       ├──► Yahoo Finance → current price + % change
+       │
+       ├──► FinBERT (HuggingFace) → sentiment per headline
+       │         positive | negative | neutral
+       │         + confidence score (0.0 – 1.0)
+       │
+       ├──► Confidence-weighted aggregation
+       │         score = Σ(confidence × vote) per label
+       │         winner = label with highest weighted score
+       │
+       ├──► Explainability engine
+       │         top 3 driving headlines + certainty note
+       │
+       ├──► SQLite → save result to history
+       │
+       └──► JSON response → frontend dashboard
 ```
 
 ---
 
 ## Key Engineering Decisions
 
-**Why FinBERT over VADER or TextBlob?**
-Generic models are trained on social media and reviews. They misread financial language — "Tesla crushes earnings" can score neutral because "crushes" is informal. FinBERT is trained on earnings reports, analyst notes, and financial news. It understands the domain.
+### Why FinBERT instead of a generic sentiment model?
 
-**Why confidence-weighted scoring over majority vote?**
-Majority vote treats a 51% confident headline the same as a 96% confident one. Weighted scoring means a strongly negative headline at 94% confidence outweighs three weakly neutral ones at 52%.
+Generic models (VADER, TextBlob) are trained on social media and reviews. They misread financial language. "Tesla beats earnings" might score neutral because "beats" is informal. FinBERT is trained on financial news, earnings reports, and analyst notes — it understands the domain.
+
+### Why confidence-weighted scoring instead of majority vote?
+
+Majority vote treats a 51% confident headline the same as a 96% confident one. If 4 headlines are neutral at 55% confidence and 3 are negative at 92% confidence, majority vote says "neutral" but the weighted score says "bearish" — which is the more reliable signal.
 
 ```python
-# Majority vote — wrong
+# Simple majority vote (old approach — wrong)
 winner = max(counts, key=counts.get)
 
-# Confidence-weighted — correct
+# Confidence-weighted scoring (current approach)
 for sentiment, confidence in results:
     weighted_scores[sentiment] += confidence
 winner = max(weighted_scores, key=weighted_scores.get)
 ```
 
-**Why serve frontend through FastAPI?**
-Mounting `frontend/` as FastAPI static files means one origin, one server, zero CORS configuration.
+### Why serve the frontend through FastAPI?
+
+Serving `index.html` as a FastAPI static file means frontend and backend share the same origin (`localhost:8000`). This eliminates CORS issues entirely — no proxy config, no extra server, one command to run everything.
 
 ---
 
 ## Features
 
-- FinBERT inference — financial domain NLP (ProsusAI/finbert)
-- Confidence-weighted Bullish / Bearish / Neutral signals
-- Plain-English explainability per result
-- Live price + % change via Yahoo Finance
-- Compare mode — two tickers analysed in parallel
-- Search history with trend chart — SQLite persistence
-- Skeleton loaders, donut chart, confidence bar chart
-- 70+ supported tickers — US, Indian IT, Indian banks, crypto
+- **FinBERT inference** — domain-specific financial NLP model (ProsusAI/finbert)
+- **Confidence-weighted signals** — Bullish / Bearish / Neutral with weighted aggregation
+- **Plain-English explainability** — top 3 headlines driving the signal + confidence note
+- **Live price context** — current price + % change today via Yahoo Finance
+- **Comparison mode** — analyze two tickers in parallel, side-by-side chart
+- **Search history** — every analysis saved to SQLite, filterable by ticker
+- **Trend chart** — sentiment trend across your last 10 searches
+- **Skeleton loaders** — professional loading states, no blank screens
+- **70+ supported tickers** — US tech, Indian IT, Indian banks, crypto, and more
 
 ---
 
@@ -79,38 +93,36 @@ Mounting `frontend/` as FastAPI static files means one origin, one server, zero 
 
 | Layer | Technology |
 |---|---|
-| ML Model | FinBERT (ProsusAI/finbert) via HuggingFace |
+| ML Model | FinBERT (ProsusAI/finbert via HuggingFace) |
 | Backend | FastAPI + Uvicorn |
 | Database | SQLite via SQLAlchemy |
-| News | NewsAPI (free tier) |
-| Price | yfinance (Yahoo Finance) |
-| Frontend | Vanilla HTML/CSS/JS + Chart.js |
+| News Data | NewsAPI (free tier) |
+| Price Data | yfinance (Yahoo Finance) |
+| Frontend | Vanilla HTML/CSS/JavaScript + Chart.js |
+| Charts | Chart.js (donut + bar + line) |
 | CI/CD | GitHub Actions |
-| Container | Docker |
 
 ---
 
 ## Project Structure
 
 ```
-stock-sentiment-engine/
-├── backend/
-│   ├── main.py            ← FastAPI app + all routes
-│   ├── model.py           ← FinBERT loading + batch inference
-│   ├── news.py            ← NewsAPI + ticker→company mapping
-│   ├── database.py        ← SQLAlchemy models + history
-│   ├── tests/
-│   │   └── test_api.py    ← pytest test suite
-│   ├── .env.example
-│   └── requirements.txt
-├── frontend/
-│   └── index.html         ← single-page dashboard
+stock-sentiment/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml         ← lint + security + tests
-│       └── deploy.yml     ← auto-deploy to Railway
-├── Dockerfile
-├── docker-compose.yml
+│       ├── ci.yml           ← lint, test, model smoke-test on every push/PR
+│       └── deploy.yml       ← deploy to server on push to main
+├── backend/
+│   ├── main.py              ← FastAPI app + all routes
+│   ├── model.py             ← FinBERT loading + inference + batch processing
+│   ├── news.py              ← NewsAPI integration + ticker→company mapping
+│   ├── database.py          ← SQLAlchemy models + save/read history
+│   ├── test_model.py        ← unit tests for sentiment model
+│   ├── test_news.py         ← unit tests for news fetching
+│   ├── .env.example         ← environment variable template
+│   └── requirements.txt
+├── frontend/
+│   └── index.html           ← single-page dashboard (no build step)
 └── README.md
 ```
 
@@ -118,47 +130,208 @@ stock-sentiment-engine/
 
 ## Quick Start
 
-### Local (without Docker)
+### 1. Clone and set up
 
 ```bash
 git clone https://github.com/bhanuchukka2005-spec/stock-sentiment-engine
 cd stock-sentiment-engine/backend
 
 python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
 
+### 2. Get a free NewsAPI key
+
+Sign up at [newsapi.org](https://newsapi.org) — free tier gives 100 requests/day.
+
+```bash
 cp .env.example .env
-# Add your NEWSAPI_KEY to .env
+# Edit .env and add your key:
+# NEWSAPI_KEY=your_key_here
+```
 
+### 3. Run
+
+```bash
 uvicorn main:app --reload
 ```
 
-Open **http://localhost:8000**
+Open **http://localhost:8000** in your browser.
 
-> First run downloads FinBERT (~500MB). Cached after that.
+> First run downloads FinBERT (~500MB). Cached after that — subsequent starts are instant.
 
-### With Docker
+---
 
-```bash
-cp backend/.env.example backend/.env
-# Add your NEWSAPI_KEY
+## CI/CD — GitHub Actions
 
-docker-compose up --build
+This project uses two GitHub Actions workflows to automate testing and deployment.
+
+### Workflow 1 — Continuous Integration (`ci.yml`)
+
+Runs on every push and pull request. Lints the code, runs unit tests, and does a model smoke-test to verify FinBERT loads correctly.
+
+**Create `.github/workflows/ci.yml`:**
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Cache HuggingFace model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: finbert-model-v1
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov flake8
+
+      - name: Lint with flake8
+        working-directory: backend
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warn on style issues but don't fail
+          flake8 . --count --max-line-length=120 --statistics --exit-zero
+
+      - name: Run unit tests
+        working-directory: backend
+        env:
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+        run: |
+          pytest test_model.py test_news.py -v --tb=short
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          fail_ci_if_error: false
+```
+
+---
+
+### Workflow 2 — Deploy on merge to main (`deploy.yml`)
+
+Runs only when code is merged to `main`. Connects to your server via SSH and restarts the app.
+
+**Create `.github/workflows/deploy.yml`:**
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/stock-sentiment-engine
+            git pull origin main
+            source venv/bin/activate
+            pip install -r backend/requirements.txt --quiet
+            sudo systemctl restart stock-sentiment
+            echo "Deploy complete ✓"
+```
+
+---
+
+### Setting up GitHub Secrets
+
+Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**.
+
+Add these secrets:
+
+| Secret | Description |
+|---|---|
+| `NEWSAPI_KEY` | Your NewsAPI key (used in CI tests) |
+| `DEPLOY_HOST` | IP address or domain of your server |
+| `DEPLOY_USER` | SSH username on your server (e.g. `ubuntu`) |
+| `DEPLOY_SSH_KEY` | Your private SSH key (contents of `~/.ssh/id_rsa`) |
+
+---
+
+### CI/CD Flow Summary
+
+```
+Developer pushes code
+        │
+        ▼
+  CI workflow runs
+        │
+        ├── flake8 lint
+        ├── pytest (model + news tests)
+        └── pass / fail ← PR is blocked if this fails
+        
+Merge PR into main
+        │
+        ▼
+  Deploy workflow runs
+        │
+        ├── SSH into server
+        ├── git pull
+        ├── pip install
+        └── systemctl restart ← app is live with new code
 ```
 
 ---
 
 ## API Reference
 
-Interactive docs at `http://localhost:8000/docs`
+All endpoints are documented interactively at `http://localhost:8000/docs`
 
 ### `GET /analyze/{ticker}`
 
-```bash
-GET /analyze/TSLA
-GET /analyze/TSLA?max_headlines=15
-```
+Full analysis pipeline for a stock ticker.
+
+**Parameters:**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `ticker` | path | required | Stock symbol (TSLA, AAPL, TCS, etc.) |
+| `max_headlines` | query | 10 | Number of headlines to analyze (1–20) |
 
 **Response:**
 ```json
@@ -167,63 +340,116 @@ GET /analyze/TSLA?max_headlines=15
   "company": "Tesla",
   "overall_signal": "bearish",
   "avg_confidence": 0.7812,
+  "headline_count": 10,
   "breakdown": { "positive": 2, "negative": 6, "neutral": 2 },
   "weighted_scores": { "positive": 18.4, "negative": 58.2, "neutral": 23.4 },
-  "price": { "price": 248.50, "change_pct": -2.14, "currency": "USD" },
+  "price": {
+    "price": 248.50,
+    "change_pct": -2.14,
+    "currency": "USD"
+  },
   "explanation": {
-    "summary": "Signal is BEARISH — 6 of 10 headlines are negative (60%)",
-    "top_headlines": [...],
-    "confidence_note": "High confidence — model is certain on 7 of 10 headlines."
+    "summary": "Signal is BEARISH — 6 of 10 headlines are negative (60%), carrying 58.2% of weighted confidence.",
+    "top_headlines": ["..."],
+    "confidence_note": "Moderate confidence — treat signal with caution."
   }
 }
 ```
 
 ### `GET /history`
+
+Fetch past searches.
+
 ```bash
-GET /history
-GET /history?ticker=TSLA
-GET /history?limit=5
+GET /history              # last 20 searches
+GET /history?ticker=TSLA  # last 20 TSLA searches
+GET /history?limit=5      # last 5 searches
 ```
 
 ### `GET /stats/{ticker}`
-### `GET /analyze/headline?text=...`
+
+Aggregated signal stats for a ticker across all searches.
+
+### `GET /analyze/headline`
+
+Analyze a single piece of text directly.
+
+```bash
+GET /analyze/headline?text=Apple+reports+record+quarterly+revenue
+```
 
 ---
 
-## Environment Variables
+## Supported Tickers
 
-```bash
-NEWSAPI_KEY=your_newsapi_key_here   # required — get free at newsapi.org
-```
+The app works with any ticker NewsAPI can find articles for. These have optimized company-name search:
+
+**US Tech:** AAPL, GOOGL, MSFT, AMZN, META, NVDA, TSLA, NFLX, UBER, AMD, INTC, PYPL, SHOP, COIN, PLTR
+
+**Indian IT:** TCS, INFY, WIPRO, HCL, TECHM, LTIM, MPHASIS, COFORGE, PERSISTENT
+
+**Indian Finance:** RELIANCE, HDFC, ICICI, SBI, AXIS, KOTAK, BAJAJ, ADANI
+
+**Indian Consumer:** ZOMATO, PAYTM, NYKAA, MARUTI, TATAMOTORS, ITC
+
+**Global:** SAMSUNG, SONY, TOYOTA, HSBC, BITCOIN, ETHEREUM
+
+> Any ticker not in this list still works — the app searches by ticker symbol directly.
 
 ---
 
 ## Known Limitations
 
-- FinBERT struggles with informal financial language ("crushes", "smashes")
-- NewsAPI free tier = 100 requests/day
-- No real-time streaming — headlines fetched on-demand
+**FinBERT struggles with informal language.** "Tesla crushes earnings" may score negative because "crushes" is not formal financial vocabulary. The model performs best on Reuters/Bloomberg-style headlines.
+
+**NewsAPI free tier = 100 requests/day.** Each `/analyze/{ticker}` call uses 1 request. For development this is sufficient; production would need a paid tier.
+
+**No real-time streaming.** Headlines are fetched on-demand, not pushed. For live streaming you'd need a WebSocket-based ingestion layer.
 
 ---
 
-## Interview Q&A
+## What I Learned Building This
 
-**Q: Why FinBERT specifically?**
-FinBERT is BERT fine-tuned on financial corpora. Generic sentiment models misclassify financial language because the training domain is wrong.
+- **Domain matters in NLP.** Swapping a generic sentiment model for FinBERT improved signal accuracy noticeably on financial text. The right pre-trained model beats the best fine-tuning on the wrong base.
+- **Explainability is engineering, not research.** Adding the "why" to every prediction took 30 lines of Python and made the tool significantly more trustworthy.
+- **Serving frontend through the backend eliminates CORS entirely.** FastAPI's `StaticFiles` mount means one origin, one server, zero configuration.
+- **CI gates quality.** Having GitHub Actions block merges on failing tests forces cleaner code discipline across the project.
 
-**Q: What's the difference between training and inference here?**
-We don't train anything — we load a pre-trained model and run inference only. Training happened on HuggingFace's infrastructure using financial datasets.
+---
 
-**Q: How does the explainability work?**
-After inference, we sort headlines by confidence score, filter to the dominant sentiment label, and return the top 3 as "driving headlines." It's logic, not a separate ML model.
+## License
 
-**Q: What would you add in production?**
-Rate limiting, user authentication, a proper vector database for semantic search over history, and a WebSocket layer for real-time streaming instead of on-demand fetch.
+```
+MIT License
+
+Copyright (c) 2025 Ch. Bhanu Prakash
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
 ## Author
 
-**Ch. Bhanu Prakash** — CS Engineering, Presidency University, Bengaluru
+**Ch. Bhanu Prakash**  
+CS Engineering, Presidency University, Bengaluru
 
-[GitHub](https://github.com/bhanuchukka2005-spec) · [LinkedIn](https://linkedin.com/in/chukka-bhanu-prakash) · [LeetCode](https://leetcode.com/u/Bhanu_heroo7)
+- GitHub: [github.com/bhanuchukka2005-spec](https://github.com/bhanuchukka2005-spec)
+- LinkedIn: [linkedin.com/in/chukka-bhanu-prakash](https://www.linkedin.com/in/chukka-bhanu-prakash)
+- LeetCode: [leetcode.com/u/Bhanu_heroo7](https://leetcode.com/u/Bhanu_heroo7)
