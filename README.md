@@ -6,7 +6,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.135-green?style=flat-square)
 ![FinBERT](https://img.shields.io/badge/Model-FinBERT-orange?style=flat-square)
 ![SQLite](https://img.shields.io/badge/DB-SQLite-lightgrey?style=flat-square)
-![CI](https://img.shields.io/github/actions/workflow/status/bhanuchukka2005-spec/stock-sentiment-engine/ci.yml?label=CI&style=flat-square)
+[![CI](https://github.com/bhanuchukka2005-spec/stock-sentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/bhanuchukka2005-spec/stock-sentiment/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 ---
